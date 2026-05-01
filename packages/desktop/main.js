@@ -11,12 +11,14 @@ const MODE_BOUNDS = {
 const EDGE_PADDING = 8;
 const SNAP_DISTANCE = 22;
 const MOVE_DEBOUNCE_MS = 160;
+const PEEK_VISIBLE_PX = 16;
 
 let mainWindow = null;
 let currentMode = "compact";
 let boundsAnimation = null;
 let snappedEdges = { horizontal: null, vertical: null };
 let snapDebounceTimer = null;
+let isPeeking = false;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -51,7 +53,7 @@ function targetBoundsForMode(mode) {
   return { x, y, width: size.width, height: size.height };
 }
 
-function animateWindowBounds(target, durationMs = 190) {
+function animateWindowBounds(target, durationMs = 190, onComplete) {
   if (!mainWindow) {
     return;
   }
@@ -86,8 +88,87 @@ function animateWindowBounds(target, durationMs = 190) {
       clearInterval(boundsAnimation);
       boundsAnimation = null;
       mainWindow.setBounds(target);
+      if (typeof onComplete === "function") {
+        onComplete();
+      }
     }
   }, 16);
+}
+
+function compactSnappedBounds() {
+  // For compact mode + snapped, the window touches the snapped edge with no
+  // padding. Touching the edge keeps the peek/expand transition stable: when
+  // the user hovers into the visible peek strip, the expanded window always
+  // contains that strip, so the cursor never falls "outside" the expanded
+  // window and we don't oscillate.
+  const { screen } = require("electron");
+  const size = MODE_BOUNDS.compact;
+  const current = mainWindow.getBounds();
+  const display = screen.getDisplayMatching(current);
+  const workArea = display.workArea;
+  const centeredX = current.x + Math.round((current.width - size.width) / 2);
+  let x = clamp(centeredX, workArea.x, workArea.x + workArea.width - size.width);
+  let y = clamp(current.y, workArea.y, workArea.y + workArea.height - size.height);
+
+  if (snappedEdges.horizontal === "left") {
+    x = workArea.x;
+  } else if (snappedEdges.horizontal === "right") {
+    x = workArea.x + workArea.width - size.width;
+  }
+
+  if (snappedEdges.vertical === "top") {
+    y = workArea.y;
+  } else if (snappedEdges.vertical === "bottom") {
+    y = workArea.y + workArea.height - size.height;
+  }
+
+  return { x, y, width: size.width, height: size.height };
+}
+
+function compactPeekBounds() {
+  const full = compactSnappedBounds();
+  const result = { ...full };
+
+  // Hide along whichever axis we snapped to. For corners, prefer hiding
+  // horizontally so the user keeps a horizontal peek strip cue.
+  if (snappedEdges.horizontal === "left") {
+    result.x = full.x - (full.width - PEEK_VISIBLE_PX);
+  } else if (snappedEdges.horizontal === "right") {
+    result.x = full.x + (full.width - PEEK_VISIBLE_PX);
+  } else if (snappedEdges.vertical === "top") {
+    result.y = full.y - (full.height - PEEK_VISIBLE_PX);
+  } else if (snappedEdges.vertical === "bottom") {
+    result.y = full.y + (full.height - PEEK_VISIBLE_PX);
+  }
+
+  return result;
+}
+
+function isSnapped() {
+  return Boolean(snappedEdges.horizontal || snappedEdges.vertical);
+}
+
+function enterPeek() {
+  if (!mainWindow || isPeeking) {
+    return;
+  }
+  if (currentMode !== "compact" || !isSnapped()) {
+    return;
+  }
+  isPeeking = true;
+  animateWindowBounds(compactPeekBounds(), 180);
+  mainWindow.webContents.send("window:peek-changed", true);
+}
+
+function exitPeek() {
+  if (!mainWindow || !isPeeking) {
+    return;
+  }
+  isPeeking = false;
+  if (currentMode === "compact" && isSnapped()) {
+    animateWindowBounds(compactSnappedBounds(), 160);
+  }
+  mainWindow.webContents.send("window:peek-changed", false);
 }
 
 function setIslandMode(mode) {
@@ -95,9 +176,21 @@ function setIslandMode(mode) {
     return { mode: currentMode };
   }
 
+  // Switching mode invalidates any prior peek state — leaving compact takes
+  // the window to a different size/position; entering compact may want to
+  // re-engage peek after the animation settles.
+  isPeeking = false;
   currentMode = MODE_BOUNDS[mode] ? mode : "compact";
-  animateWindowBounds(targetBoundsForMode(currentMode));
+  const target = currentMode === "compact" && isSnapped()
+    ? compactSnappedBounds()
+    : targetBoundsForMode(currentMode);
+  animateWindowBounds(target, 190, () => {
+    if (currentMode === "compact" && isSnapped()) {
+      enterPeek();
+    }
+  });
   mainWindow.webContents.send("window:mode-changed", currentMode);
+  mainWindow.webContents.send("window:peek-changed", false);
   return { mode: currentMode };
 }
 
@@ -107,6 +200,12 @@ function scheduleSnapAfterMove() {
   // actually stopped moving, and never during a programmatic animation.
   if (boundsAnimation) {
     return;
+  }
+  // The user is moving the window themselves — drop any peek state without
+  // animating, otherwise a programmatic slide would fight the cursor.
+  if (isPeeking) {
+    isPeeking = false;
+    mainWindow.webContents.send("window:peek-changed", false);
   }
   if (snapDebounceTimer) {
     clearTimeout(snapDebounceTimer);
@@ -150,22 +249,30 @@ function snapWindowToNearbyEdge() {
     return;
   }
 
+  // For compact mode, snap right against the edge (no padding) so the peek
+  // transition is stable. For approval/question modes, keep an EDGE_PADDING
+  // gap so the user can see the panel comfortably.
+  const padding = currentMode === "compact" ? 0 : EDGE_PADDING;
   const target = {
     x: horizontal === "left"
-      ? workArea.x + EDGE_PADDING
+      ? workArea.x + padding
       : horizontal === "right"
-        ? workArea.x + workArea.width - bounds.width - EDGE_PADDING
-        : clamp(bounds.x, workArea.x + EDGE_PADDING, workArea.x + workArea.width - bounds.width - EDGE_PADDING),
+        ? workArea.x + workArea.width - bounds.width - padding
+        : clamp(bounds.x, workArea.x + padding, workArea.x + workArea.width - bounds.width - padding),
     y: vertical === "top"
-      ? workArea.y + EDGE_PADDING
+      ? workArea.y + padding
       : vertical === "bottom"
-        ? workArea.y + workArea.height - bounds.height - EDGE_PADDING
-        : clamp(bounds.y, workArea.y + EDGE_PADDING, workArea.y + workArea.height - bounds.height - EDGE_PADDING),
+        ? workArea.y + workArea.height - bounds.height - padding
+        : clamp(bounds.y, workArea.y + padding, workArea.y + workArea.height - bounds.height - padding),
     width: bounds.width,
     height: bounds.height
   };
 
-  animateWindowBounds(target, 120);
+  animateWindowBounds(target, 120, () => {
+    if (currentMode === "compact") {
+      enterPeek();
+    }
+  });
 }
 
 function createWindow() {
@@ -247,4 +354,14 @@ ipcMain.handle("window:set-mode", (_event, mode) => {
 
 ipcMain.handle("open:dashboard", () => {
   shell.openExternal("http://127.0.0.1:4317/");
+});
+
+ipcMain.handle("window:peek-hover", () => {
+  // Renderer signals that the cursor has settled on the visible peek strip.
+  // Hover/unhover debouncing already happened in the renderer.
+  exitPeek();
+});
+
+ipcMain.handle("window:peek-unhover", () => {
+  enterPeek();
 });

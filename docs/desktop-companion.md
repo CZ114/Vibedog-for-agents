@@ -43,7 +43,7 @@ The window does not inspect Claude Code directly. It only consumes daemon summar
 
 The window has two visual modes:
 
-- Compact: `176 x 44`, showing only a state label and a context-usage progress bar.
+- Compact: `176 x 44`, showing only a state label and a context-usage progress bar. When snapped to an edge, this mode further auto-tucks into a 16 px peek strip and only slides out fully on hover.
 - Expanded: `360 x 238` for approvals or `360 x 300` for questions.
 
 The renderer chooses the mode from daemon state. The main process animates the native window bounds, keeping the window centered around its current position. CSS transitions handle the capsule-to-card shape change and content fade-in.
@@ -51,6 +51,8 @@ The renderer chooses the mode from daemon state. The main process animates the n
 This mimics the Dynamic Island idea without using iOS APIs: compact/minimal at rest, expanded only when action is needed.
 
 When the user drags the island near a screen edge, the main process snaps it to that edge and preserves that edge alignment while expanding or collapsing. Edge snap is debounced ~160 ms after the last `moved` event so it only triggers once the drag actually stops, instead of fighting the cursor while the user is still moving the window. Programmatic moves from the expand/collapse animation are skipped via the `boundsAnimation` guard.
+
+After snap settles, compact mode auto-enters a *peek* state: the window slides past the snapped edge so only `PEEK_VISIBLE_PX` (16 px) of the bubble remains in the work area. Hovering the cursor onto that visible strip slides the bubble fully back into view (80 ms hover debounce); leaving the bubble re-engages peek (240 ms leave debounce). Peek is only used in compact mode — approval and question modes always render fully visible, since the user needs the panel to act on the request. The renderer mirrors the peek state via `document.body.dataset.peeking` so CSS can subtly differentiate the docked strip from a regular floating compact bubble. When the user starts dragging the bubble somewhere else, peek state drops immediately (without animation) so the drag does not fight a programmatic slide.
 
 ## Context Usage
 

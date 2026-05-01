@@ -411,6 +411,51 @@ window.companionDesktop.onModeChanged((mode) => {
   document.body.dataset.mode = mode;
 });
 
+window.companionDesktop.onPeekChanged((peeking) => {
+  document.body.dataset.peeking = peeking ? "true" : "false";
+});
+
+const HOVER_TO_EXPAND_MS = 80;
+const LEAVE_TO_COLLAPSE_MS = 240;
+let peekHoverTimer = null;
+let peekLeaveTimer = null;
+
+document.body.addEventListener("mouseenter", () => {
+  // Only the compact mode uses the peek/expand transition. Approval and
+  // question modes need to stay fully visible regardless of cursor position.
+  if (state.mode !== "compact") {
+    return;
+  }
+  if (peekLeaveTimer) {
+    clearTimeout(peekLeaveTimer);
+    peekLeaveTimer = null;
+  }
+  if (peekHoverTimer) {
+    return;
+  }
+  peekHoverTimer = setTimeout(() => {
+    peekHoverTimer = null;
+    window.companionDesktop.peekHover();
+  }, HOVER_TO_EXPAND_MS);
+});
+
+document.body.addEventListener("mouseleave", () => {
+  if (state.mode !== "compact") {
+    return;
+  }
+  if (peekHoverTimer) {
+    clearTimeout(peekHoverTimer);
+    peekHoverTimer = null;
+  }
+  if (peekLeaveTimer) {
+    return;
+  }
+  peekLeaveTimer = setTimeout(() => {
+    peekLeaveTimer = null;
+    window.companionDesktop.peekUnhover();
+  }, LEAVE_TO_COLLAPSE_MS);
+});
+
 connectSocket();
 refresh();
 setInterval(() => {
