@@ -198,6 +198,9 @@ Server -> client `session_states_snapshot`:
         "percent": 16,
         "label": "31.6k / 200k",
         "model": "claude-sonnet-4-6",
+        "modelFamily": "sonnet",
+        "windowSource": "model-default",
+        "windowRule": "sonnet",
         "source": "transcript"
       },
       "sequence": 12,
@@ -213,6 +216,7 @@ Current status values:
 - `idle`
 - `thinking`
 - `running_tool`
+- `waiting`
 - `waiting_approval`
 - `waiting_answer`
 - `done`
@@ -316,6 +320,9 @@ Returns the latest known status for each Claude Code session. This endpoint uses
         "percent": 16,
         "label": "31.6k / 200k",
         "model": "claude-sonnet-4-6",
+        "modelFamily": "sonnet",
+        "windowSource": "model-default",
+        "windowRule": "sonnet",
         "source": "transcript"
       },
       "sequence": 8,
@@ -335,11 +342,19 @@ input_tokens + cache_read_input_tokens + cache_creation_input_tokens + output_to
 `maxTokens` is resolved in this order:
 
 1. Explicit `usage.context_window_tokens` / `usage.max_context_tokens` field if Claude ever supplies one.
-2. The `message.model` recorded for the same transcript line. Models whose id contains the `[1m]` suffix (e.g. `claude-opus-4-7[1m]`) report a 1,000,000-token window. All other current Claude 3.x / 4.x models report 200,000.
-3. The `CCC_CONTEXT_WINDOW_TOKENS` env override.
-4. Built-in default of 200,000.
+2. The `CCC_CONTEXT_WINDOW_TOKENS` env override, when local testing needs to force a single value.
+3. The `CCC_MODEL_CONTEXT_WINDOWS` env override, parsed as a JSON map whose keys are exact model ids or model-id substrings.
+4. The `message.model` recorded for the same transcript line. Models whose id or alias contains `[1m]` / `1m` report a 1,000,000-token window.
+5. Built-in model-family defaults, currently 200,000 for Claude model families.
+6. Built-in default of 200,000.
 
-The model id used to derive the window is also returned as `contextUsage.model` so clients can display it.
+The model id used to derive the window is returned as `contextUsage.model`. Clients also receive `contextUsage.modelFamily`, `contextUsage.windowSource`, and `contextUsage.windowRule` so they can explain whether the value came from transcript metadata, an env override, a 1M model marker, or a default.
+
+Example model-specific override:
+
+```powershell
+$env:CCC_MODEL_CONTEXT_WINDOWS = '{"claude-opus-4-7":1000000,"sonnet":200000}'
+```
 
 ### `GET /pairing-token`
 

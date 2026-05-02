@@ -101,12 +101,13 @@ The desktop companion is a transparent always-on-top Electron island. It connect
 ws://127.0.0.1:4317/ws
 ```
 
-It shows a compact status emoji and state label, then expands into an approval or answer panel when Claude needs input. The controls are:
+At rest, it shows a compact status emoji with the context ring plus the Claude state label. Hovering the island expands it to reveal controls without hiding the status. Dragging it to a screen edge tucks it into a small context-only slit; dragging that slit back out detaches it into a standalone bubble again. When Claude reaches `done` while tucked, the bubble briefly slides out with a green completion glow and can tuck itself back, but the completion reminder stays active until the user moves the pointer over the bubble; the slit pulses only while that reminder is unacknowledged. When Claude needs input, it expands into an approval or answer panel.
 
-- `>` opens the local browser dashboard.
-- `r` refreshes daemon state.
-- `-` minimizes the window.
-- `x` closes the desktop companion.
+The hover-only controls are:
+
+- gear opens the local browser dashboard/settings.
+- square toggles compact/expanded size.
+- minus minimizes the window.
 
 The window does not start or stop Claude Code. It is another local client of the daemon, so the terminal remains the source of truth and Claude Code's native UI still works when the Companion approval hook is bypassed.
 
@@ -184,7 +185,7 @@ The hook groups in the example are:
 - `PermissionRequest` with matcher `Bash|PowerShell` -> `packages/hooks/permission-request.js` for `waiting_approval`
 - `PostToolUse` -> `packages/hooks/event.js` for returning to `thinking`
 - `PostToolUseFailure` -> `packages/hooks/event.js` for `failed`
-- `Notification` -> `packages/hooks/event.js` for waiting hints
+- `Notification` -> `packages/hooks/event.js` for `waiting` hints when Claude Code asks for user input or terminal attention
 - `Stop` -> `packages/hooks/event.js` for `done`
 
 The core approval portion looks like this:
@@ -245,6 +246,8 @@ CCC_FAIL_OPEN=false
 CCC_BYPASS_APPROVAL_HOOK=false
 CCC_DISABLE_STATUS_HOOK=false
 CCC_DATA_DIR=.claude-companion
+CCC_CONTEXT_WINDOW_TOKENS=
+CCC_MODEL_CONTEXT_WINDOWS=
 ```
 
 Use `CCC_FAIL_OPEN=true` only while debugging. The default is fail-closed.
@@ -269,6 +272,12 @@ Aliases:
 CCC_REMOTE_APPROVAL=off
 CCC_STATUS_HOOK=off
 ```
+
+Context ring sizing:
+
+- Leave `CCC_CONTEXT_WINDOW_TOKENS` empty for normal model-based behavior.
+- Set `CCC_CONTEXT_WINDOW_TOKENS=200000` to force one window size while debugging.
+- Set `CCC_MODEL_CONTEXT_WINDOWS` to a JSON map when a model id or alias needs a local override, for example `{"claude-opus-4-7":1000000,"sonnet":200000}`.
 
 ## Pairing Token Flow
 

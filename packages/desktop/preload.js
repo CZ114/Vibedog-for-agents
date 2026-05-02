@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("companionDesktop", {
   openDashboard: () => ipcRenderer.invoke("open:dashboard"),
   peekHover: () => ipcRenderer.invoke("window:peek-hover"),
   peekUnhover: () => ipcRenderer.invoke("window:peek-unhover"),
+  doneAttention: () => ipcRenderer.invoke("window:done-attention"),
+  ackAttention: () => ipcRenderer.invoke("window:ack-attention"),
+  clearAttention: () => ipcRenderer.invoke("window:clear-attention"),
   onCompactChanged: (callback) => {
     ipcRenderer.on("window:compact-changed", (_event, compact) => callback(Boolean(compact)));
   },
@@ -16,5 +19,11 @@ contextBridge.exposeInMainWorld("companionDesktop", {
   },
   onPeekChanged: (callback) => {
     ipcRenderer.on("window:peek-changed", (_event, peeking) => callback(Boolean(peeking)));
+  },
+  onSnapChanged: (callback) => {
+    ipcRenderer.on("window:snap-changed", (_event, edges) => callback(edges || {}));
+  },
+  onAttentionChanged: (callback) => {
+    ipcRenderer.on("window:attention-changed", (_event, attention) => callback(attention || null));
   }
 });

@@ -40,7 +40,7 @@ The first milestone is deliberately small:
 2. Register a Claude Code native `PermissionRequest` hook.
 3. Send Bash and PowerShell native permission requests from the hook to the daemon.
 4. Route `AskUserQuestion` through `PreToolUse` so a remote UI can answer Claude's clarifying questions.
-5. Track Claude working states like `thinking`, `running_tool`, `waiting_approval`, `waiting_answer`, `done`, and `failed`.
+5. Track Claude working states like `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, and `failed`.
 6. Show the status and request in a Windows floating companion.
 7. Return `allow`, `deny`, `always_allow`, or `answers` to Claude Code.
 

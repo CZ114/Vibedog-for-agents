@@ -52,6 +52,10 @@ When Claude Code asks to run a Bash or PowerShell command, the floating companio
 
 When Claude asks a clarifying question through `AskUserQuestion`, the floating companion shows answer options or a text field.
 
+When Claude Code only sends a notification that it is waiting for terminal input or attention, the compact companion shows `Waiting` instead of `Question`.
+
+If the compact companion is tucked into a screen edge, a fresh `done` state briefly slides the bubble out with a green completion highlight. The reminder remains active, including the tucked slit pulse, until you move the pointer over the bubble.
+
 ## Local Browser Dashboard
 
 The daemon also serves a local web dashboard:
@@ -60,7 +64,7 @@ The daemon also serves a local web dashboard:
 http://127.0.0.1:4317/
 ```
 
-The desktop companion's `>` control opens this dashboard.
+Hover the compact desktop companion and use the gear control to open this dashboard.
 
 ## Temporary Switches
 

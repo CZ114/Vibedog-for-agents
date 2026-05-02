@@ -5,6 +5,7 @@ const STATUS_META = {
   idle: { emoji: "\u{1F4A4}", label: "Idle" },
   thinking: { emoji: "\u{1F914}", label: "Thinking" },
   running_tool: { emoji: "\u2699\uFE0F", label: "Running" },
+  waiting: { emoji: "\u23F3", label: "Waiting" },
   waiting_approval: { emoji: "\u{1F7E1}", label: "Approval" },
   waiting_answer: { emoji: "\u2753", label: "Question" },
   done: { emoji: "\u2705", label: "Done" },
@@ -12,6 +13,14 @@ const STATUS_META = {
   blocked: { emoji: "\u26D4", label: "Blocked" },
   offline: { emoji: "\u{1F50C}", label: "Offline" }
 };
+const DONE_ATTENTION_FROM_STATUSES = new Set([
+  "thinking",
+  "running_tool",
+  "waiting",
+  "waiting_approval",
+  "waiting_answer"
+]);
+const DONE_ATTENTION_TRIGGER_DELAY_MS = 260;
 
 const state = {
   socket: null,
@@ -19,11 +28,15 @@ const state = {
   sessions: [],
   requests: [],
   selectedAnswers: {},
-  mode: "compact"
+  mode: "compact",
+  lastStatus: null,
+  attention: null
 };
+let doneAttentionTimer = null;
 
 const els = {
   island: document.querySelector(".island"),
+  statusOrb: document.getElementById("statusOrb"),
   statusEmoji: document.getElementById("statusEmoji"),
   statusText: document.getElementById("statusText"),
   statusDetail: document.getElementById("statusDetail"),
@@ -43,6 +56,7 @@ const els = {
   denyRequest: document.getElementById("denyRequest"),
   refreshNow: document.getElementById("refreshNow"),
   openDashboard: document.getElementById("openDashboard"),
+  maximizeWindow: document.getElementById("maximizeWindow"),
   minimizeWindow: document.getElementById("minimizeWindow"),
   closeWindow: document.getElementById("closeWindow")
 };
@@ -127,8 +141,46 @@ function renderContext(contextUsage) {
   const color = colorForContext(percent);
   document.documentElement.style.setProperty("--context-color", color);
   document.documentElement.style.setProperty("--context-angle", `${percent * 3.6}deg`);
+  document.documentElement.style.setProperty("--context-percent", `${percent}%`);
   els.contextFill.style.width = `${percent}%`;
   els.contextLabel.textContent = contextUsage.label || `ctx ${percent}%`;
+  const model = contextUsage.model ? ` - ${contextUsage.model}` : "";
+  const source = contextUsage.windowSource ? ` - ${contextUsage.windowSource}` : "";
+  els.statusOrb.title = `${contextUsage.label || `ctx ${percent}%`}${model}${source}`;
+}
+
+function maybeTriggerDoneAttention(status) {
+  const previousStatus = state.lastStatus;
+  state.lastStatus = status;
+
+  if (doneAttentionTimer && status !== "done") {
+    window.clearTimeout(doneAttentionTimer);
+    doneAttentionTimer = null;
+  }
+
+  if (status !== "done" && state.attention === "done") {
+    state.attention = null;
+    if (window.companionDesktop && window.companionDesktop.clearAttention) {
+      window.companionDesktop.clearAttention();
+    }
+  }
+
+  if (status !== "done" || !DONE_ATTENTION_FROM_STATUSES.has(previousStatus)) {
+    return;
+  }
+  if (!window.companionDesktop || !window.companionDesktop.doneAttention) {
+    return;
+  }
+
+  if (doneAttentionTimer) {
+    window.clearTimeout(doneAttentionTimer);
+  }
+  doneAttentionTimer = window.setTimeout(() => {
+    doneAttentionTimer = null;
+    if (els.island.dataset.status === "done") {
+      window.companionDesktop.doneAttention();
+    }
+  }, DONE_ATTENTION_TRIGGER_DELAY_MS);
 }
 
 function renderStatus(status, detail, contextUsage) {
@@ -138,6 +190,7 @@ function renderStatus(status, detail, contextUsage) {
   els.statusText.textContent = meta.label;
   els.statusDetail.textContent = detail || "";
   renderContext(contextUsage);
+  maybeTriggerDoneAttention(status);
 }
 
 function renderSession() {
@@ -360,6 +413,7 @@ async function decide(requestId, decision, reason, extra = {}) {
 
   if (state.connected && state.socket && state.socket.readyState === WebSocket.OPEN) {
     state.socket.send(JSON.stringify(payload));
+    window.setTimeout(refresh, 120);
     return;
   }
 
@@ -395,16 +449,24 @@ els.denyRequest.addEventListener("click", () => {
   if (!requestId) {
     return;
   }
-  const reason = window.prompt("Deny reason", "Denied from desktop companion");
-  if (reason !== null) {
-    decide(requestId, "deny", reason);
-  }
+  decide(requestId, "deny", "Denied from desktop companion");
 });
 
-els.refreshNow.addEventListener("click", refresh);
-els.openDashboard.addEventListener("click", () => window.companionDesktop.openDashboard());
-els.minimizeWindow.addEventListener("click", () => window.companionDesktop.minimize());
-els.closeWindow.addEventListener("click", () => window.companionDesktop.close());
+if (els.refreshNow) {
+  els.refreshNow.addEventListener("click", refresh);
+}
+if (els.openDashboard) {
+  els.openDashboard.addEventListener("click", () => window.companionDesktop.openDashboard());
+}
+if (els.maximizeWindow) {
+  els.maximizeWindow.addEventListener("click", () => window.companionDesktop.toggleCompact());
+}
+if (els.minimizeWindow) {
+  els.minimizeWindow.addEventListener("click", () => window.companionDesktop.minimize());
+}
+if (els.closeWindow) {
+  els.closeWindow.addEventListener("click", () => window.companionDesktop.close());
+}
 
 window.companionDesktop.onModeChanged((mode) => {
   state.mode = mode;
@@ -415,14 +477,49 @@ window.companionDesktop.onPeekChanged((peeking) => {
   document.body.dataset.peeking = peeking ? "true" : "false";
 });
 
-const HOVER_TO_EXPAND_MS = 80;
-const LEAVE_TO_COLLAPSE_MS = 240;
+if (window.companionDesktop.onSnapChanged) {
+  window.companionDesktop.onSnapChanged((edges) => {
+    if (edges.horizontal) {
+      document.body.dataset.snapHorizontal = String(edges.horizontal);
+    } else {
+      delete document.body.dataset.snapHorizontal;
+    }
+    if (edges.vertical) {
+      document.body.dataset.snapVertical = String(edges.vertical);
+    } else {
+      delete document.body.dataset.snapVertical;
+    }
+  });
+}
+
+if (window.companionDesktop.onAttentionChanged) {
+  window.companionDesktop.onAttentionChanged((attention) => {
+    state.attention = attention || null;
+    if (attention) {
+      document.body.dataset.attention = String(attention);
+    } else {
+      delete document.body.dataset.attention;
+    }
+  });
+}
+
+const HOVER_TO_EXPAND_MS = 100;
+const LEAVE_TO_COLLAPSE_MS = 320;
 let peekHoverTimer = null;
 let peekLeaveTimer = null;
 
-document.body.addEventListener("mouseenter", () => {
-  // Only the compact mode uses the peek/expand transition. Approval and
-  // question modes need to stay fully visible regardless of cursor position.
+function acknowledgeAttentionFromPointer() {
+  if (state.attention && window.companionDesktop.ackAttention) {
+    state.attention = null;
+    window.companionDesktop.ackAttention();
+  }
+}
+
+document.body.addEventListener("pointerenter", () => {
+  acknowledgeAttentionFromPointer();
+
+  // Compact mode uses hover to expand the tiny island or reveal the edge peek.
+  // Approval and question modes stay fully visible so the request is actionable.
   if (state.mode !== "compact") {
     return;
   }
@@ -439,7 +536,9 @@ document.body.addEventListener("mouseenter", () => {
   }, HOVER_TO_EXPAND_MS);
 });
 
-document.body.addEventListener("mouseleave", () => {
+document.body.addEventListener("pointermove", acknowledgeAttentionFromPointer);
+
+document.body.addEventListener("pointerleave", () => {
   if (state.mode !== "compact") {
     return;
   }

@@ -14,7 +14,10 @@ const ENV = {
   ...process.env,
   CCC_PORT: String(PORT),
   CCC_APPROVAL_TIMEOUT_MS: "5000",
-  CCC_DATA_DIR: path.join(os.tmpdir(), "claude-code-companion-smoke-" + process.pid)
+  CCC_DATA_DIR: path.join(os.tmpdir(), "claude-code-companion-smoke-" + process.pid),
+  CCC_MODEL_CONTEXT_WINDOWS: JSON.stringify({
+    "smoke-custom-model": 123456
+  })
 };
 
 function request(method, pathname, body) {
@@ -391,6 +394,21 @@ async function waitForSessionStatus(sessionId, status) {
   throw new Error(`No session state ${status || "any"} appeared for ${sessionId}`);
 }
 
+function writeTranscriptUsage(transcriptPath, model, usage) {
+  fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+  fs.writeFileSync(
+    transcriptPath,
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        model,
+        usage
+      }
+    }) + "\n",
+    "utf8"
+  );
+}
+
 async function main() {
   const daemon = spawn(process.execPath, ["packages/daemon/src/index.js"], {
     cwd: ROOT,
@@ -520,6 +538,44 @@ async function main() {
       throw new Error("Expected UserPromptSubmit summary in session state");
     }
 
+    const oneMillionTranscript = path.join(ENV.CCC_DATA_DIR, "transcript-context-1m.jsonl");
+    writeTranscriptUsage(oneMillionTranscript, "claude-opus-4-7[1m]", {
+      input_tokens: 100000
+    });
+    await runHook("packages/hooks/event.js", {
+      session_id: "sess_smoke_context_1m",
+      transcript_path: oneMillionTranscript,
+      cwd: ROOT,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Check 1m context"
+    });
+    const oneMillionState = await waitForSessionStatus("sess_smoke_context_1m", "thinking");
+    if (!oneMillionState.contextUsage || oneMillionState.contextUsage.maxTokens !== 1000000) {
+      throw new Error("Expected [1m] model id to resolve a 1,000,000 token context window");
+    }
+    if (oneMillionState.contextUsage.windowSource !== "model-id" || oneMillionState.contextUsage.windowRule !== "1m") {
+      throw new Error("Expected [1m] context window source metadata");
+    }
+
+    const overrideTranscript = path.join(ENV.CCC_DATA_DIR, "transcript-context-override.jsonl");
+    writeTranscriptUsage(overrideTranscript, "smoke-custom-model-beta", {
+      input_tokens: 12345
+    });
+    await runHook("packages/hooks/event.js", {
+      session_id: "sess_smoke_context_override",
+      transcript_path: overrideTranscript,
+      cwd: ROOT,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Check model override context"
+    });
+    const overrideState = await waitForSessionStatus("sess_smoke_context_override", "thinking");
+    if (!overrideState.contextUsage || overrideState.contextUsage.maxTokens !== 123456) {
+      throw new Error("Expected CCC_MODEL_CONTEXT_WINDOWS to override context window");
+    }
+    if (overrideState.contextUsage.windowSource !== "model-override") {
+      throw new Error("Expected context window source to report model-override");
+    }
+
     await runHook("packages/hooks/event.js", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
@@ -546,6 +602,15 @@ async function main() {
       }
     });
     await waitForSessionStatus("sess_smoke_status", "thinking");
+
+    await runHook("packages/hooks/event.js", {
+      session_id: "sess_smoke_status",
+      transcript_path: "C:/tmp/transcript-status.jsonl",
+      cwd: ROOT,
+      hook_event_name: "Notification",
+      message: "Claude is waiting for your input"
+    });
+    await waitForSessionStatus("sess_smoke_status", "waiting");
 
     await runHook("packages/hooks/event.js", {
       session_id: "sess_smoke_status",

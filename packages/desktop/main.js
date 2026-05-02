@@ -4,14 +4,22 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 
 const MODE_BOUNDS = {
-  compact: { width: 176, height: 44 },
+  compact: { width: 124, height: 42 },
   approval: { width: 360, height: 238 },
   question: { width: 360, height: 300 }
 };
+const COMPACT_HOVER_BOUNDS = { width: 202, height: 42 };
 const EDGE_PADDING = 8;
-const SNAP_DISTANCE = 22;
+const SNAP_DISTANCE = 48;
+const SNAP_DETACH_DISTANCE = 24;
+const SNAP_REATTACH_COOLDOWN_MS = 650;
 const MOVE_DEBOUNCE_MS = 160;
-const PEEK_VISIBLE_PX = 16;
+const PEEK_VISIBLE_PX = 12;
+const AUTO_PEEK_ON_EDGE = true;
+const HOVER_COLLAPSE_DELAY_MS = 280;
+const HOVER_MIN_VISIBLE_MS = 700;
+const HOVER_HYSTERESIS_PX = 18;
+const DONE_ATTENTION_MS = 2800;
 
 let mainWindow = null;
 let currentMode = "compact";
@@ -19,6 +27,12 @@ let boundsAnimation = null;
 let snappedEdges = { horizontal: null, vertical: null };
 let snapDebounceTimer = null;
 let isPeeking = false;
+let compactHoverExpanded = false;
+let snapSuppressedUntil = 0;
+let compactCollapseTimer = null;
+let compactHoverVisibleSince = 0;
+let attentionState = null;
+let doneAttentionTimer = null;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -28,9 +42,13 @@ function easeOutCubic(value) {
   return 1 - Math.pow(1 - value, 3);
 }
 
+function compactSize() {
+  return compactHoverExpanded ? COMPACT_HOVER_BOUNDS : MODE_BOUNDS.compact;
+}
+
 function targetBoundsForMode(mode) {
   const { screen } = require("electron");
-  const size = MODE_BOUNDS[mode] || MODE_BOUNDS.compact;
+  const size = mode === "compact" ? compactSize() : MODE_BOUNDS[mode] || MODE_BOUNDS.compact;
   const current = mainWindow.getBounds();
   const display = screen.getDisplayMatching(current);
   const workArea = display.workArea;
@@ -95,14 +113,11 @@ function animateWindowBounds(target, durationMs = 190, onComplete) {
   }, 16);
 }
 
-function compactSnappedBounds() {
+function compactSnappedBounds(expanded = compactHoverExpanded) {
   // For compact mode + snapped, the window touches the snapped edge with no
-  // padding. Touching the edge keeps the peek/expand transition stable: when
-  // the user hovers into the visible peek strip, the expanded window always
-  // contains that strip, so the cursor never falls "outside" the expanded
-  // window and we don't oscillate.
+  // padding. This keeps the edge peek and hover expansion anchored.
   const { screen } = require("electron");
-  const size = MODE_BOUNDS.compact;
+  const size = expanded ? COMPACT_HOVER_BOUNDS : MODE_BOUNDS.compact;
   const current = mainWindow.getBounds();
   const display = screen.getDisplayMatching(current);
   const workArea = display.workArea;
@@ -148,13 +163,115 @@ function isSnapped() {
   return Boolean(snappedEdges.horizontal || snappedEdges.vertical);
 }
 
+function sendSnapChanged() {
+  if (!mainWindow) {
+    return;
+  }
+  mainWindow.webContents.send("window:snap-changed", snappedEdges);
+}
+
+function sendAttentionChanged() {
+  if (!mainWindow) {
+    return;
+  }
+  mainWindow.webContents.send("window:attention-changed", attentionState);
+}
+
+function setAttentionState(nextState) {
+  const normalized = nextState || null;
+  if (attentionState === normalized) {
+    return;
+  }
+  attentionState = normalized;
+  sendAttentionChanged();
+}
+
+function clearCompactCollapseTimer() {
+  if (compactCollapseTimer) {
+    clearTimeout(compactCollapseTimer);
+    compactCollapseTimer = null;
+  }
+}
+
+function clearDoneAttentionTimer() {
+  if (doneAttentionTimer) {
+    clearTimeout(doneAttentionTimer);
+    doneAttentionTimer = null;
+  }
+}
+
+function clearDoneAttention() {
+  clearDoneAttentionTimer();
+  setAttentionState(null);
+}
+
+function pointInBounds(point, bounds, padding = 0) {
+  return point.x >= bounds.x - padding &&
+    point.x <= bounds.x + bounds.width + padding &&
+    point.y >= bounds.y - padding &&
+    point.y <= bounds.y + bounds.height + padding;
+}
+
+function distanceFromSnappedEdge(bounds) {
+  if (!isSnapped()) {
+    return 0;
+  }
+
+  const { screen } = require("electron");
+  const display = screen.getDisplayMatching(bounds);
+  const workArea = display.workArea;
+  const values = [];
+
+  if (snappedEdges.horizontal === "left") {
+    const reference = isPeeking ? workArea.x - (bounds.width - PEEK_VISIBLE_PX) : workArea.x;
+    values.push(bounds.x - reference);
+  } else if (snappedEdges.horizontal === "right") {
+    const reference = isPeeking
+      ? workArea.x + workArea.width - PEEK_VISIBLE_PX
+      : workArea.x + workArea.width - bounds.width;
+    values.push(reference - bounds.x);
+  }
+
+  if (snappedEdges.vertical === "top") {
+    const reference = isPeeking ? workArea.y - (bounds.height - PEEK_VISIBLE_PX) : workArea.y;
+    values.push(bounds.y - reference);
+  } else if (snappedEdges.vertical === "bottom") {
+    const reference = isPeeking
+      ? workArea.y + workArea.height - PEEK_VISIBLE_PX
+      : workArea.y + workArea.height - bounds.height;
+    values.push(reference - bounds.y);
+  }
+
+  return Math.max(...values.map((value) => Math.max(0, value)), 0);
+}
+
+function detachFromEdge() {
+  if (!mainWindow || !isSnapped()) {
+    return;
+  }
+
+  snappedEdges = { horizontal: null, vertical: null };
+  isPeeking = false;
+  compactHoverExpanded = false;
+  clearCompactCollapseTimer();
+  clearDoneAttention();
+  snapSuppressedUntil = Date.now() + SNAP_REATTACH_COOLDOWN_MS;
+  mainWindow.webContents.send("window:peek-changed", false);
+  sendSnapChanged();
+}
+
 function enterPeek() {
   if (!mainWindow || isPeeking) {
+    return;
+  }
+  if (!AUTO_PEEK_ON_EDGE) {
     return;
   }
   if (currentMode !== "compact" || !isSnapped()) {
     return;
   }
+  clearCompactCollapseTimer();
+  compactHoverExpanded = false;
   isPeeking = true;
   animateWindowBounds(compactPeekBounds(), 180);
   mainWindow.webContents.send("window:peek-changed", true);
@@ -166,9 +283,77 @@ function exitPeek() {
   }
   isPeeking = false;
   if (currentMode === "compact" && isSnapped()) {
-    animateWindowBounds(compactSnappedBounds(), 160);
+    compactHoverExpanded = true;
+    compactHoverVisibleSince = Date.now();
+    animateWindowBounds(compactSnappedBounds(true), 170);
   }
   mainWindow.webContents.send("window:peek-changed", false);
+}
+
+function collapseCompactHoverNow() {
+  if (!mainWindow || currentMode !== "compact") {
+    return;
+  }
+
+  compactHoverExpanded = false;
+  if (isSnapped()) {
+    enterPeek();
+    return;
+  }
+
+  animateWindowBounds(targetBoundsForMode("compact"), 150);
+}
+
+function scheduleCompactCollapse() {
+  if (!mainWindow || currentMode !== "compact") {
+    return;
+  }
+
+  clearCompactCollapseTimer();
+  const visibleFor = Date.now() - compactHoverVisibleSince;
+  const delay = Math.max(HOVER_COLLAPSE_DELAY_MS, HOVER_MIN_VISIBLE_MS - visibleFor);
+
+  compactCollapseTimer = setTimeout(() => {
+    compactCollapseTimer = null;
+
+    if (!mainWindow || currentMode !== "compact") {
+      return;
+    }
+
+    const { screen } = require("electron");
+    const cursor = screen.getCursorScreenPoint();
+    if (pointInBounds(cursor, mainWindow.getBounds(), HOVER_HYSTERESIS_PX)) {
+      scheduleCompactCollapse();
+      return;
+    }
+
+    collapseCompactHoverNow();
+  }, delay);
+}
+
+function setCompactHover(expanded) {
+  if (!mainWindow || currentMode !== "compact") {
+    return;
+  }
+
+  if (expanded) {
+    clearCompactCollapseTimer();
+    clearDoneAttention();
+    if (compactHoverExpanded && !isPeeking) {
+      return;
+    }
+    compactHoverExpanded = true;
+    compactHoverVisibleSince = Date.now();
+    if (isPeeking) {
+      exitPeek();
+      return;
+    }
+    const target = isSnapped() ? compactSnappedBounds(true) : targetBoundsForMode("compact");
+    animateWindowBounds(target, 170);
+    return;
+  }
+
+  scheduleCompactCollapse();
 }
 
 function setIslandMode(mode) {
@@ -176,10 +361,13 @@ function setIslandMode(mode) {
     return { mode: currentMode };
   }
 
-  // Switching mode invalidates any prior peek state — leaving compact takes
+  // Switching mode invalidates any prior peek state; leaving compact takes
   // the window to a different size/position; entering compact may want to
   // re-engage peek after the animation settles.
   isPeeking = false;
+  compactHoverExpanded = false;
+  clearCompactCollapseTimer();
+  clearDoneAttention();
   currentMode = MODE_BOUNDS[mode] ? mode : "compact";
   const target = currentMode === "compact" && isSnapped()
     ? compactSnappedBounds()
@@ -191,7 +379,48 @@ function setIslandMode(mode) {
   });
   mainWindow.webContents.send("window:mode-changed", currentMode);
   mainWindow.webContents.send("window:peek-changed", false);
+  sendSnapChanged();
   return { mode: currentMode };
+}
+
+function triggerDoneAttention() {
+  if (!mainWindow || currentMode !== "compact" || !isSnapped()) {
+    return { shown: false };
+  }
+
+  clearDoneAttentionTimer();
+  clearCompactCollapseTimer();
+  isPeeking = false;
+  compactHoverExpanded = true;
+  compactHoverVisibleSince = Date.now();
+  setAttentionState("done");
+  animateWindowBounds(compactSnappedBounds(true), 190);
+  mainWindow.webContents.send("window:peek-changed", false);
+
+  doneAttentionTimer = setTimeout(() => {
+    doneAttentionTimer = null;
+
+    if (!mainWindow || currentMode !== "compact") {
+      return;
+    }
+
+    const { screen } = require("electron");
+    const cursor = screen.getCursorScreenPoint();
+    if (pointInBounds(cursor, mainWindow.getBounds(), HOVER_HYSTERESIS_PX)) {
+      compactHoverVisibleSince = Date.now();
+      scheduleCompactCollapse();
+      return;
+    }
+
+    compactHoverExpanded = false;
+    if (isSnapped()) {
+      enterPeek();
+      return;
+    }
+    animateWindowBounds(targetBoundsForMode("compact"), 150);
+  }, DONE_ATTENTION_MS);
+
+  return { shown: true };
 }
 
 function scheduleSnapAfterMove() {
@@ -201,7 +430,12 @@ function scheduleSnapAfterMove() {
   if (boundsAnimation) {
     return;
   }
-  // The user is moving the window themselves — drop any peek state without
+
+  if (isSnapped() && distanceFromSnappedEdge(mainWindow.getBounds()) > SNAP_DETACH_DISTANCE) {
+    detachFromEdge();
+  }
+
+  // The user is moving the window themselves; drop any peek state without
   // animating, otherwise a programmatic slide would fight the cursor.
   if (isPeeking) {
     isPeeking = false;
@@ -218,6 +452,12 @@ function scheduleSnapAfterMove() {
 
 function snapWindowToNearbyEdge() {
   if (!mainWindow || boundsAnimation) {
+    return;
+  }
+  if (attentionState === "done") {
+    return;
+  }
+  if (Date.now() < snapSuppressedUntil) {
     return;
   }
 
@@ -244,6 +484,7 @@ function snapWindowToNearbyEdge() {
       : null;
 
   snappedEdges = { horizontal, vertical };
+  sendSnapChanged();
 
   if (!horizontal && !vertical) {
     return;
@@ -284,8 +525,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: initial.width,
     height: initial.height,
-    minWidth: 180,
-    minHeight: 48,
+    minWidth: 46,
+    minHeight: 40,
     maxWidth: 420,
     maxHeight: 360,
     x: workArea.x + Math.round((workArea.width - initial.width) / 2),
@@ -310,6 +551,7 @@ function createWindow() {
 
   mainWindow.setAlwaysOnTop(true, "floating");
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  mainWindow.on("move", scheduleSnapAfterMove);
   mainWindow.on("moved", scheduleSnapAfterMove);
   mainWindow.once("ready-to-show", () => {
     mainWindow.showInactive();
@@ -357,11 +599,23 @@ ipcMain.handle("open:dashboard", () => {
 });
 
 ipcMain.handle("window:peek-hover", () => {
-  // Renderer signals that the cursor has settled on the visible peek strip.
-  // Hover/unhover debouncing already happened in the renderer.
-  exitPeek();
+  setCompactHover(true);
 });
 
 ipcMain.handle("window:peek-unhover", () => {
-  enterPeek();
+  setCompactHover(false);
+});
+
+ipcMain.handle("window:done-attention", () => {
+  return triggerDoneAttention();
+});
+
+ipcMain.handle("window:ack-attention", () => {
+  clearDoneAttention();
+  return { acknowledged: true };
+});
+
+ipcMain.handle("window:clear-attention", () => {
+  clearDoneAttention();
+  return { cleared: true };
 });

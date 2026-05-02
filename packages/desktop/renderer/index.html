@@ -8,6 +8,9 @@
 </head>
 <body data-mode="compact">
   <main class="island" data-status="idle">
+    <span class="peek-context" aria-hidden="true">
+      <span class="peek-context-fill"></span>
+    </span>
     <section class="status-bar" aria-label="Claude Code status">
       <div class="drag-region">
         <span class="status-orb" id="statusOrb" aria-hidden="true">
@@ -26,10 +29,9 @@
       </div>
 
       <div class="window-actions" aria-label="Window controls">
-        <button id="openDashboard" aria-label="Open dashboard" title="Open dashboard" type="button">&gt;</button>
-        <button id="refreshNow" aria-label="Refresh" title="Refresh" type="button">r</button>
-        <button id="minimizeWindow" aria-label="Minimize" title="Minimize" type="button">-</button>
-        <button id="closeWindow" aria-label="Close" title="Close" type="button">x</button>
+        <button id="openDashboard" aria-label="Open settings" title="Open settings" type="button">&#9881;</button>
+        <button id="maximizeWindow" aria-label="Expand" title="Expand" type="button">&#9633;</button>
+        <button id="minimizeWindow" aria-label="Minimize" title="Minimize" type="button">&#8722;</button>
       </div>
     </section>
 

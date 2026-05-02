@@ -22,7 +22,9 @@ const PORT = Number(process.env.CCC_PORT || 4317);
 const HOST = process.env.CCC_HOST || "127.0.0.1";
 const REQUEST_TIMEOUT_MS = Number(process.env.CCC_APPROVAL_TIMEOUT_MS || 55_000);
 const DATA_DIR = process.env.CCC_DATA_DIR || path.join(process.cwd(), ".claude-companion");
-const DEFAULT_CONTEXT_WINDOW_TOKENS = Number(process.env.CCC_CONTEXT_WINDOW_TOKENS || 200_000);
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000;
+const CONTEXT_WINDOW_OVERRIDE_TOKENS = Number(process.env.CCC_CONTEXT_WINDOW_TOKENS || 0);
+const MODEL_CONTEXT_WINDOW_OVERRIDES = parseModelContextWindowOverrides(process.env.CCC_MODEL_CONTEXT_WINDOWS);
 
 const pendingRequests = new Map();
 const sessionStates = new Map();
@@ -221,32 +223,103 @@ function numberFromAny(...values) {
   return 0;
 }
 
+function parseModelContextWindowOverrides(raw) {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+
+    return Object.entries(parsed)
+      .map(([pattern, tokens]) => ({
+        pattern: String(pattern || "").trim().toLowerCase(),
+        tokens: Number(tokens)
+      }))
+      .filter((item) => item.pattern && Number.isFinite(item.tokens) && item.tokens > 0);
+  } catch (error) {
+    console.warn(`[warn] Ignoring invalid CCC_MODEL_CONTEXT_WINDOWS: ${error.message}`);
+    return [];
+  }
+}
+
+function modelFamilyFromText(text) {
+  if (text.includes("opus")) {
+    return "opus";
+  }
+  if (text.includes("sonnet")) {
+    return "sonnet";
+  }
+  if (text.includes("haiku")) {
+    return "haiku";
+  }
+  return "unknown";
+}
+
+function modelOverrideFromEnv(modelText) {
+  const exact = MODEL_CONTEXT_WINDOW_OVERRIDES.find((item) => modelText === item.pattern);
+  if (exact) {
+    return exact;
+  }
+  return MODEL_CONTEXT_WINDOW_OVERRIDES.find((item) => modelText.includes(item.pattern)) || null;
+}
+
+function contextWindowRecord(maxTokens, source, model, rule) {
+  return {
+    maxTokens,
+    source,
+    rule,
+    model: model ? String(model) : null,
+    modelFamily: model ? modelFamilyFromText(String(model).toLowerCase()) : "unknown"
+  };
+}
+
 function contextWindowFromModel(model) {
-  // Claude Code records the active model id on every assistant turn in the
-  // transcript. The 1M-context variants always carry a "[1m]" suffix in that
-  // id, so that suffix is the cleanest signal we can rely on. Everything else
-  // currently defaults to the standard 200k window.
   if (!model) {
-    return 0;
+    return contextWindowRecord(DEFAULT_CONTEXT_WINDOW_TOKENS, "default", null, "missing-model");
   }
+
   const text = String(model).toLowerCase();
-  if (text.includes("[1m]")) {
-    return 1_000_000;
+  const override = modelOverrideFromEnv(text);
+  if (override) {
+    return contextWindowRecord(override.tokens, "model-override", model, override.pattern);
   }
-  return 200_000;
+
+  // Claude Code's model aliases and full model ids use a [1m] marker when the
+  // active model is running with the extended context window.
+  if (text.includes("[1m]") || /(^|[^a-z0-9])1m([^a-z0-9]|$)/.test(text)) {
+    return contextWindowRecord(1_000_000, "model-id", model, "1m");
+  }
+
+  if (text.includes("claude") || ["opus", "sonnet", "haiku"].some((name) => text.includes(name))) {
+    return contextWindowRecord(DEFAULT_CONTEXT_WINDOW_TOKENS, "model-default", model, modelFamilyFromText(text));
+  }
+
+  return contextWindowRecord(DEFAULT_CONTEXT_WINDOW_TOKENS, "default", model, "fallback");
 }
 
 function contextWindowFromUsage(usage, model) {
-  return numberFromAny(
+  const explicit = numberFromAny(
     usage.context_window_tokens,
     usage.contextWindowTokens,
     usage.context_window,
     usage.contextWindow,
     usage.max_context_tokens,
-    usage.maxContextTokens,
-    contextWindowFromModel(model),
-    DEFAULT_CONTEXT_WINDOW_TOKENS
+    usage.maxContextTokens
   );
+
+  if (explicit) {
+    return contextWindowRecord(explicit, "usage", model, "usage-field");
+  }
+
+  if (CONTEXT_WINDOW_OVERRIDE_TOKENS) {
+    return contextWindowRecord(CONTEXT_WINDOW_OVERRIDE_TOKENS, "env", model, "CCC_CONTEXT_WINDOW_TOKENS");
+  }
+
+  return contextWindowFromModel(model);
 }
 
 function contextUsageFromUsage(usage, model) {
@@ -259,7 +332,8 @@ function contextUsageFromUsage(usage, model) {
   const cacheCreationTokens = numberFromAny(usage.cache_creation_input_tokens, usage.cacheCreationInputTokens);
   const outputTokens = numberFromAny(usage.output_tokens, usage.outputTokens);
   const usedTokens = inputTokens + cacheReadTokens + cacheCreationTokens + outputTokens;
-  const maxTokens = contextWindowFromUsage(usage, model);
+  const contextWindow = contextWindowFromUsage(usage, model);
+  const maxTokens = contextWindow.maxTokens;
 
   if (!usedTokens || !maxTokens) {
     return null;
@@ -272,6 +346,9 @@ function contextUsageFromUsage(usage, model) {
     percent,
     label: `${compactTokenCount(usedTokens)} / ${compactTokenCount(maxTokens)}`,
     model: model ? String(model) : null,
+    modelFamily: contextWindow.modelFamily,
+    windowSource: contextWindow.source,
+    windowRule: contextWindow.rule,
     source: "transcript"
   };
 }
@@ -396,7 +473,7 @@ function statusForHookInput(hookInput) {
       return "waiting_approval";
     }
     if (message.includes("input") || message.includes("waiting")) {
-      return "waiting_answer";
+      return "waiting";
     }
     return "thinking";
   }
@@ -673,6 +750,7 @@ function approvalPageHtml() {
       background: #2563eb;
     }
 
+    .state-waiting,
     .state-waiting_approval,
     .state-waiting_answer {
       background: #b45309;

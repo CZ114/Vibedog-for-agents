@@ -91,6 +91,7 @@ Current statuses:
 - `idle`
 - `thinking`
 - `running_tool`
+- `waiting`
 - `waiting_approval`
 - `waiting_answer`
 - `done`

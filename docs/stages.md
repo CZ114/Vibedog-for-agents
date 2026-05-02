@@ -39,7 +39,7 @@ Exit criteria:
 - A harmless Bash command can be approved remotely.
 - A PowerShell command can be approved through the native `PermissionRequest` hook.
 - `AskUserQuestion` can be answered remotely with `updatedInput.answers`.
-- Session status changes can be observed as `thinking`, `running_tool`, `waiting_approval`, `waiting_answer`, `done`, `failed`, or `blocked`.
+- Session status changes can be observed as `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`, or `blocked`.
 - A target repo can be configured idempotently without hand-editing JSON.
 - `CCC_BYPASS_APPROVAL_HOOK=true` hands approval/question control back to Claude Code's native UI.
 - `CCC_DISABLE_STATUS_HOOK=true` stops Companion status capture.
@@ -61,14 +61,16 @@ Scope:
 
 - Electron floating island for Windows development.
 - Transparent, frameless, movable, always-on-top window.
-- Compact state that shows only a status label plus context-usage progress.
+- Resting compact state that shows the status emoji, context-usage ring, and Claude state label.
+- Hover compact state that keeps the Claude state visible while revealing hover controls.
 - Native window bounds animation that expands from compact island to approval/question panel.
-- Screen-edge snapping when the user drags the island near an edge.
-- Expanded state shows context usage as a ring around the status emoji.
-- Current state summary for `idle`, `thinking`, `running_tool`, `waiting_approval`, `waiting_answer`, `done`, `failed`, and `blocked`.
+- Screen-edge snapping with a context-only peek slit when the user drags the island near an edge.
+- Done-state completion cue that briefly slides the tucked edge bubble back out with a green attention animation and stays unacknowledged until the pointer enters the bubble.
+- Expanded state keeps context usage as a ring around the status emoji.
+- Current state summary for `idle`, `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`, and `blocked`.
 - Approval card for native Bash and PowerShell permission requests.
 - Answer form for `AskUserQuestion`.
-- Approve, deny, always-allow, answer, refresh, and open-dashboard controls.
+- Approve, deny, always-allow, answer, hover-only settings/dashboard, expand, and minimize controls.
 - WebSocket first, polling fallback.
 
 Non-goals:
@@ -86,6 +88,7 @@ Exit criteria:
 - A real `AskUserQuestion` request can be answered from the floating window.
 - The user can glance at the window and know whether Claude is running, blocked, waiting, failed, or done.
 - The window stays compact by default and expands only when action is needed.
+- A tucked edge bubble visibly announces a fresh `done` transition and clears that reminder only after pointer acknowledgement.
 
 Docs to update:
 
