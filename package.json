@@ -1,8 +1,8 @@
 {
-  "name": "claude-code-companion",
+  "name": "clawdeck",
   "version": "0.0.0",
   "private": true,
-  "description": "Windows + iOS companion for Claude Code approvals and status.",
+  "description": "Clawdeck — a floating Windows desktop companion for Claude Code approvals, sessions, and status. iPhone companion planned.",
   "scripts": {
     "daemon": "node packages/daemon/src/index.js",
     "hook:event": "node packages/hooks/event.js",

@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 
 // Same path the hook scripts check via shared/protocol.js#isCompanionDisabled.
 const COMPANION_DIR = path.join(os.homedir(), ".claude-companion");
@@ -49,16 +49,21 @@ const BUBBLE_PADDING = 12;
 const CAPSULE_BOUNDS = {
   compact: { width: 124, height: 42 },
   approval: { width: 360, height: 238 },
-  question: { width: 360, height: 300 }
+  question: { width: 360, height: 300 },
+  // dashboard: full overview that replaces the legacy browser dashboard at
+  // http://127.0.0.1:4317/ — pending queue, sessions, devices, pairing,
+  // audit events, health footer. Internal scroll handles overflow.
+  dashboard: { width: 420, height: 540 }
 };
-const COMPACT_HOVER_CAPSULE = { width: 202, height: 42 };
+const COMPACT_HOVER_CAPSULE = { width: 224, height: 42 };
 function paddedBounds(b) {
   return { width: b.width + 2 * BUBBLE_PADDING, height: b.height + 2 * BUBBLE_PADDING };
 }
 const MODE_BOUNDS = {
   compact: paddedBounds(CAPSULE_BOUNDS.compact),
   approval: paddedBounds(CAPSULE_BOUNDS.approval),
-  question: paddedBounds(CAPSULE_BOUNDS.question)
+  question: paddedBounds(CAPSULE_BOUNDS.question),
+  dashboard: paddedBounds(CAPSULE_BOUNDS.dashboard)
 };
 const COMPACT_HOVER_BOUNDS = paddedBounds(COMPACT_HOVER_CAPSULE);
 const EDGE_PADDING = 8;
@@ -821,8 +826,8 @@ function createWindow() {
     height: initial.height,
     minWidth: 46,
     minHeight: 40,
-    maxWidth: 420,
-    maxHeight: 360,
+    maxWidth: MODE_BOUNDS.dashboard.width,
+    maxHeight: MODE_BOUNDS.dashboard.height,
     x: initial.x,
     y: initial.y,
     frame: false,
@@ -945,8 +950,12 @@ ipcMain.handle("window:set-mode", (_event, mode) => {
   return setIslandMode(mode);
 });
 
+// Gear button — toggle in-app dashboard. The legacy browser page at
+// http://127.0.0.1:4317/ has been removed; everything it used to show
+// now lives inside the bubble's dashboard mode.
 ipcMain.handle("open:dashboard", () => {
-  shell.openExternal("http://127.0.0.1:4317/");
+  const target = currentMode === "dashboard" ? "compact" : "dashboard";
+  return setIslandMode(target);
 });
 
 ipcMain.handle("window:peek-hover", () => {

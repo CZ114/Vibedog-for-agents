@@ -22,6 +22,12 @@
   --surface-1: oklch(17% 0.014 270 / 0.96);
   --surface-2: oklch(22% 0.016 270);
   --surface-glass: oklch(20% 0.014 270 / 0.86);
+  --island-surface: var(--surface-1);
+  --island-glass: var(--surface-glass);
+  --island-color-preview: #111318;
+  --island-ink-0: var(--ink-0);
+  --island-ink-1: var(--ink-1);
+  --island-control-hover-bg: oklch(100% 0 0 / 0.07);
 
   /* ink */
   --ink-0: oklch(95% 0.014 80);
@@ -39,16 +45,20 @@
 
   /* depth */
   --shadow-inner-highlight:
-    0 1px 0 inset oklch(100% 0 0 / 0.04),
-    0 0 0 1px inset oklch(100% 0 0 / 0.05);
-  /* Sized to fit inside the 12px gutter around the capsule so the soft
-     halo doesn't get clipped at the BrowserWindow boundary. */
+    0 1px 0 inset oklch(100% 0 0 / 0.055),
+    0 -1px 0 inset oklch(0% 0 0 / 0.18),
+    0 0 0 1px inset oklch(100% 0 0 / 0.045);
+  /* Sized to stay well inside the 12px transparent BrowserWindow gutter.
+     The compact island is small, so the shadow needs to read like a tight
+     contact shadow instead of a broad card shadow. */
   --shadow-float:
-    0 6px 14px -4px oklch(0% 0 0 / 0.55),
-    0 2px 4px -1px oklch(0% 0 0 / 0.40);
+    0 1px 1px oklch(0% 0 0 / 0.34),
+    0 4px 8px -6px oklch(0% 0 0 / 0.52),
+    0 8px 12px -11px oklch(0% 0 0 / 0.30);
   --shadow-float-tall:
-    0 10px 22px -6px oklch(0% 0 0 / 0.60),
-    0 3px 7px -2px oklch(0% 0 0 / 0.45);
+    0 1px 2px oklch(0% 0 0 / 0.34),
+    0 8px 16px -10px oklch(0% 0 0 / 0.52),
+    0 14px 24px -18px oklch(0% 0 0 / 0.34);
 
   /* motion */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
@@ -69,6 +79,12 @@
     --context-angle 720ms var(--ease-standard),
     --context-percent 720ms var(--ease-standard),
     --context-color 320ms var(--ease-standard);
+}
+
+body[data-island-tone="light"] {
+  --island-ink-0: oklch(16% 0.014 270);
+  --island-ink-1: oklch(30% 0.012 260);
+  --island-control-hover-bg: oklch(0% 0 0 / 0.08);
 }
 
 * {
@@ -129,6 +145,30 @@ button {
     border-radius 320ms var(--ease-standard),
     background 320ms var(--ease-standard),
     box-shadow 320ms var(--ease-standard);
+}
+
+body[data-mode="compact"] .island {
+  background: var(--island-surface);
+}
+
+.island::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      oklch(100% 0 0 / 0.045),
+      transparent 42%,
+      oklch(0% 0 0 / 0.075)
+    );
+}
+
+body[data-mode="compact"] .island::before {
+  opacity: 0.72;
 }
 
 body:not([data-mode="compact"]) .island {
@@ -238,6 +278,7 @@ body:not([data-snap-horizontal]) .peek-context-fill {
 
 .status-bar {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   /* In compact mode the status bar fills the whole capsule vertically so
@@ -350,6 +391,10 @@ body:not([data-mode="compact"]) .status-emoji {
   transition: color 240ms var(--ease-standard);
 }
 
+body[data-mode="compact"] .status-text {
+  color: var(--island-ink-0);
+}
+
 /* No numbers anywhere — ring is the single context signal. */
 .context-label,
 .status-detail,
@@ -381,7 +426,16 @@ body:not([data-mode="compact"]) .status-emoji {
     transform 320ms var(--ease-decel);
 }
 
-.island:hover .window-actions {
+body[data-mode="compact"] .window-actions {
+  background: var(--island-glass);
+}
+
+/* Visibility is JS-driven: body[data-controls="visible"] is set on pointer
+   enter and cleared after CONTROLS_LEAVE_GRACE_MS once the pointer leaves
+   the BrowserWindow. The body fills the window (capsule + 12 px gutter),
+   so the gutter itself acts as a geometric grace zone — the cursor can
+   drift slightly off the painted capsule without dropping the controls. */
+body[data-controls="visible"] .window-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translate(0, -50%);
@@ -408,6 +462,41 @@ body[data-peeking="true"] .window-actions {
 .window-actions button:hover {
   background: oklch(100% 0 0 / 0.07);
   color: var(--ink-0);
+}
+
+body[data-mode="compact"] .window-actions button {
+  color: var(--island-ink-1);
+}
+
+body[data-mode="compact"] .window-actions button:hover {
+  background: var(--island-control-hover-bg);
+  color: var(--island-ink-0);
+}
+
+.window-actions .color-button {
+  display: inline-grid;
+  position: relative;
+  place-items: center;
+  color: transparent;
+}
+
+.window-actions .color-button span {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--island-color-preview);
+  box-shadow:
+    0 0 0 1px oklch(100% 0 0 / 0.26),
+    0 1px 2px oklch(0% 0 0 / 0.45);
+}
+
+.island-color-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Toggle button — sand-gold tint when Companion is disabled, so the off
@@ -437,6 +526,8 @@ body[data-companion-disabled="true"] .status-emoji {
    ============================================================ */
 
 .request-panel {
+  position: relative;
+  z-index: 1;
   max-height: calc(100% - 58px);
   overflow: auto;
   padding: 0 16px 16px;
@@ -452,6 +543,31 @@ body[data-companion-disabled="true"] .status-emoji {
   pointer-events: none;
   opacity: 0;
   transform: translateY(-6px);
+}
+
+/* Dashboard mode is a vertical feed of sections (active-request, pending
+   queue, sessions, devices, audit events, health footer). Approval and
+   question modes hide the dashboard sections and only show .active-request,
+   so the panel collapses to its prior single-card height. */
+body[data-mode="dashboard"] .request-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 6px;
+}
+
+body[data-mode="approval"] .dash-section,
+body[data-mode="approval"] .dash-footer,
+body[data-mode="question"] .dash-section,
+body[data-mode="question"] .dash-footer {
+  display: none;
+}
+
+/* The active-request hides automatically via its [hidden] attribute when
+   no request is pending — relevant only in dashboard mode (in approval/
+   question modes the panel itself is hidden when no request). */
+.active-request[hidden] {
+  display: none;
 }
 
 .request-head {
@@ -707,6 +823,319 @@ dd {
 }
 
 /* ============================================================
+   Dashboard sections — pending queue, sessions, devices,
+   pairing, audit events, health footer.
+   ============================================================ */
+
+.dash-section {
+  display: grid;
+  gap: 8px;
+}
+
+.dash-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dash-section-title {
+  margin: 0;
+  color: var(--ink-1);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.dash-count {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.dash-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dash-empty {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 11px;
+  text-align: center;
+  box-shadow: var(--shadow-inner-highlight);
+}
+
+.dash-row {
+  display: grid;
+  gap: 4px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-inner-highlight);
+  text-align: left;
+  cursor: default;
+  transition:
+    background 200ms var(--ease-standard),
+    transform 200ms var(--ease-standard);
+}
+
+button.dash-row {
+  border: 0;
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.dash-row:hover,
+.dash-row[data-clickable="true"]:hover {
+  background: oklch(25% 0.018 270);
+}
+
+button.dash-row:active {
+  transform: translateY(0.5px);
+}
+
+.dash-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dash-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-0);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-row-summary {
+  display: -webkit-box;
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dash-row-meta {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-chip {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dash-chip[data-status="idle"],
+.dash-chip[data-status="done"] {
+  background: oklch(22% 0.025 150);
+  color: var(--accent-sage);
+}
+
+.dash-chip[data-status="thinking"],
+.dash-chip[data-status="running_tool"] {
+  background: oklch(22% 0.030 245);
+  color: oklch(78% 0.06 245);
+}
+
+.dash-chip[data-status="waiting"],
+.dash-chip[data-status="waiting_approval"],
+.dash-chip[data-status="waiting_answer"] {
+  background: oklch(22% 0.025 70);
+  color: var(--accent-warm);
+}
+
+.dash-chip[data-status="failed"],
+.dash-chip[data-status="blocked"] {
+  background: oklch(22% 0.025 25);
+  color: var(--accent-rose);
+}
+
+.dash-chip[data-risk="low"] {
+  background: oklch(22% 0.025 150);
+  color: var(--accent-sage);
+}
+
+.dash-chip[data-risk="medium"] {
+  background: oklch(22% 0.025 70);
+  color: var(--accent-warm);
+}
+
+.dash-chip[data-risk="high"] {
+  background: oklch(22% 0.025 25);
+  color: var(--accent-rose);
+}
+
+.dash-link {
+  background: transparent;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.dash-link:hover {
+  color: oklch(82% 0.07 195);
+}
+
+.dash-pairing {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-inner-highlight);
+}
+
+.dash-pairing-token {
+  color: var(--accent-warm);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  user-select: text;
+}
+
+.dash-pairing-meta {
+  color: var(--ink-2);
+  font-size: 10.5px;
+}
+
+.dash-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.dash-row-action {
+  background: transparent;
+  color: var(--accent-rose);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.dash-row-action:hover {
+  background: oklch(22% 0.025 25);
+}
+
+.dash-row-action[data-variant="approve"] {
+  color: var(--accent-sage);
+}
+
+.dash-row-action[data-variant="approve"]:hover {
+  background: oklch(22% 0.025 150);
+}
+
+.dash-row-actions[data-actions="pair"] {
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.dash-list-events {
+  max-height: 160px;
+  overflow: auto;
+  gap: 3px;
+}
+
+.dash-event-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: oklch(15% 0.012 270);
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.dash-event-row time {
+  color: var(--ink-2);
+}
+
+.dash-event-row[data-type="permission_decision"] strong {
+  color: var(--accent-sage);
+}
+
+.dash-event-row[data-type="permission_request"] strong {
+  color: var(--accent-warm);
+}
+
+.dash-event-row[data-type^="device_"] strong {
+  color: var(--accent);
+}
+
+.dash-footer {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: 10.5px;
+}
+
+.dash-footer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dash-footer-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-sage);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent-sage), transparent 80%);
+}
+
+.dash-footer[data-state="offline"] .dash-footer-label::before {
+  background: var(--accent-rose);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent-rose), transparent 80%);
+}
+
+.dash-footer-meta {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================
    Status animations — animate transform / opacity so the loops stay
    smooth; Chromium auto-promotes the layers, no will-change needed.
    ============================================================ */
@@ -763,7 +1192,7 @@ dd {
    Done attention — sage→warm sweep, sage glow on text
    ============================================================ */
 
-body[data-attention="done"] .island {
+body[data-mode="compact"][data-attention="done"] .island {
   background:
     linear-gradient(
       105deg,
@@ -771,7 +1200,7 @@ body[data-attention="done"] .island {
       transparent 38%,
       color-mix(in oklch, var(--accent-warm), transparent 92%) 100%
     ),
-    var(--surface-1);
+    var(--island-surface);
 }
 
 body[data-attention="done"] .island::after {

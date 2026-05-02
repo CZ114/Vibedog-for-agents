@@ -30,6 +30,10 @@
 
       <div class="window-actions" aria-label="Window controls">
         <button id="toggleEnabled" aria-label="Toggle Companion" title="Toggle Companion approvals" type="button">&#9211;</button>
+        <button id="changeIslandColor" class="color-button" aria-label="Change capsule color" title="Change capsule color" type="button">
+          <span aria-hidden="true"></span>
+        </button>
+        <input id="islandColorInput" class="island-color-input" type="color" value="#111318" aria-label="Capsule color">
         <button id="openDashboard" aria-label="Open settings" title="Open settings" type="button">&#9881;</button>
         <button id="maximizeWindow" aria-label="Expand" title="Expand" type="button">&#9633;</button>
         <button id="minimizeWindow" aria-label="Minimize" title="Minimize" type="button">&#8722;</button>
@@ -37,34 +41,81 @@
     </section>
 
     <section class="request-panel" id="requestPanel" hidden>
-      <div class="request-head">
-        <div>
-          <div class="eyebrow" id="requestKind">approval</div>
-          <h1 id="requestTool">Tool request</h1>
+      <article class="active-request" id="activeRequest" hidden>
+        <div class="request-head">
+          <div>
+            <div class="eyebrow" id="requestKind">approval</div>
+            <h1 id="requestTool">Tool request</h1>
+          </div>
+          <div class="risk" id="requestRisk">low</div>
         </div>
-        <div class="risk" id="requestRisk">low</div>
-      </div>
 
-      <p class="request-summary" id="requestSummary"></p>
+        <p class="request-summary" id="requestSummary"></p>
 
-      <dl class="request-meta">
-        <div>
-          <dt>cwd</dt>
-          <dd id="requestCwd"></dd>
+        <dl class="request-meta">
+          <div>
+            <dt>cwd</dt>
+            <dd id="requestCwd"></dd>
+          </div>
+          <div>
+            <dt>reason</dt>
+            <dd id="requestReason"></dd>
+          </div>
+        </dl>
+
+        <form class="answer-form" id="answerForm" hidden></form>
+
+        <div class="actions" id="approvalActions">
+          <button class="approve" id="approveRequest" type="button">Approve</button>
+          <div class="suggestion-list" id="suggestionList"></div>
+          <button class="deny" id="denyRequest" type="button">Deny</button>
         </div>
-        <div>
-          <dt>reason</dt>
-          <dd id="requestReason"></dd>
+      </article>
+
+      <section class="dash-section dash-section-pending" id="pendingSection" hidden>
+        <div class="dash-section-head">
+          <h3 class="dash-section-title">Pending queue</h3>
+          <span class="dash-count" id="pendingCount">0</span>
         </div>
-      </dl>
+        <div class="dash-list" id="pendingList"></div>
+      </section>
 
-      <form class="answer-form" id="answerForm" hidden></form>
+      <section class="dash-section dash-section-sessions">
+        <div class="dash-section-head">
+          <h3 class="dash-section-title">Claude sessions</h3>
+          <span class="dash-count" id="sessionsCount">0</span>
+        </div>
+        <div class="dash-list dash-list-sessions" id="sessionsList">
+          <div class="dash-empty">No Claude session state yet.</div>
+        </div>
+      </section>
 
-      <div class="actions" id="approvalActions">
-        <button class="approve" id="approveRequest" type="button">Approve</button>
-        <div class="suggestion-list" id="suggestionList"></div>
-        <button class="deny" id="denyRequest" type="button">Deny</button>
-      </div>
+      <section class="dash-section dash-section-devices">
+        <div class="dash-section-head">
+          <h3 class="dash-section-title">Devices</h3>
+          <button class="dash-link" id="generatePairingToken" type="button">Generate pairing token</button>
+        </div>
+        <div class="dash-pairing" id="pairingPanel" hidden>
+          <code class="dash-pairing-token" id="pairingTokenValue"></code>
+          <span class="dash-pairing-meta" id="pairingTokenMeta"></span>
+        </div>
+        <div class="dash-list dash-list-devices" id="devicesList">
+          <div class="dash-empty">No paired devices.</div>
+        </div>
+      </section>
+
+      <section class="dash-section dash-section-events">
+        <div class="dash-section-head">
+          <h3 class="dash-section-title">Audit events</h3>
+          <button class="dash-link" id="toggleEvents" type="button" aria-expanded="false">Show</button>
+        </div>
+        <div class="dash-list dash-list-events" id="eventsList" hidden></div>
+      </section>
+
+      <footer class="dash-footer">
+        <span class="dash-footer-label" id="dashHealthLabel">connecting...</span>
+        <span class="dash-footer-meta" id="dashHealthMeta"></span>
+      </footer>
     </section>
   </main>
 

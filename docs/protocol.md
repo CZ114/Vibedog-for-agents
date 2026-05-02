@@ -104,9 +104,12 @@ Windows PowerShell native permission requests use the same shape with `tool_name
 
 ### `GET /`
 
-Returns the Stage 0 local approval web page. The page connects to `GET /ws` for realtime events and falls back to polling `GET /pending-requests` when the socket is disconnected.
-
-This page is a local developer approval surface only. It is not a replacement for the future iPhone app.
+Returns a small static notice page directing users to the desktop bubble.
+Stage 0 originally served an inline 1,200-line approval dashboard here, but
+that legacy surface has been retired — its content (pending queue, sessions,
+devices, pairing token, audit events, health) now lives inside the bubble's
+dashboard mode. Other clients should use `GET /ws` plus the JSON endpoints
+listed below; nothing in the daemon depends on this HTML response.
 
 ### `GET /ws`
 
@@ -230,7 +233,7 @@ Client -> server `permission_decision`:
   "type": "permission_decision",
   "requestId": "req_abc",
   "decision": "allow",
-  "reason": "Approved from local web UI"
+  "reason": "Approved from desktop companion"
 }
 ```
 
@@ -259,7 +262,7 @@ Server -> client `permission_decision_result`:
   "ok": true,
   "requestId": "req_abc",
   "decision": "allow",
-  "reason": "Approved from local web UI"
+  "reason": "Approved from desktop companion"
 }
 ```
 
@@ -567,7 +570,7 @@ Deny response:
     "hookEventName": "PermissionRequest",
     "decision": {
       "behavior": "deny",
-      "message": "Denied from local web UI"
+      "message": "Denied from desktop companion"
     }
   }
 }

@@ -67,8 +67,8 @@ Scope:
 - Transparent, frameless, movable, always-on-top window. All Win11 rectangle sources opted out (`thickFrame: false`, `roundedCorners: false`, `backgroundMaterial: "none"`, `hasShadow: false`) so the visible surface is a pure capsule.
 - Two-tier sizing: CAPSULE_BOUNDS for the visible bubble, MODE_BOUNDS = capsule + `BUBBLE_PADDING` (12 px gutter) for the BrowserWindow. Snap and peek math operates in capsule coords.
 - Resting compact state shows the status emoji + conic context-usage ring + status label.
-- Hover compact state reveals the controls strip (toggle / settings / expand / minimize).
-- Native window bounds animation expands from compact capsule to approval / question panel.
+- Hover compact state reveals the controls strip (toggle / capsule color / settings / expand / minimize).
+- Native window bounds animation expands from compact capsule to approval / question panel, or to **dashboard mode** (`420 × 540`) — a vertical feed of pending queue, sessions, devices, pairing token, audit events, and health footer that replaces the legacy browser dashboard at `http://127.0.0.1:4317/` (now a small notice page).
 - Screen-edge snapping with a context-only peek slit on drag-to-edge.
 - Slit hover detection via main-process cursor polling (browser hover state is stale after the BrowserWindow slides off-screen).
 - Done-state attention cue: capsule slides out for `DONE_ATTENTION_MS = 10 min` with a sage→warm sweep; after re-tucking, the slit pulses with sage glow until acknowledged.

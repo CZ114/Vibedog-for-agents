@@ -45,9 +45,10 @@ There are two parallel size systems:
 
 - **CAPSULE_BOUNDS** — the visible bubble:
   - Resting compact: `124 x 42`
-  - Hover compact: `202 x 42`
+  - Hover compact: `224 x 42`
   - Approval expanded: `360 x 238`
   - Question expanded: `360 x 300`
+  - Dashboard expanded: `420 x 540`
 - **MODE_BOUNDS** — the BrowserWindow, which adds `BUBBLE_PADDING = 12 px` on every side around the capsule for a transparent gutter where the soft drop shadow renders.
 
 Snap, peek, and distance math is implemented in CAPSULE coordinates (the user-perceived shape) and translated to BrowserWindow coordinates via `snapInset()` whenever bounds are computed. When snapped to an edge in compact mode, the BrowserWindow overhangs the work area by `BUBBLE_PADDING` so the capsule itself sits flush with the edge.
@@ -73,11 +74,12 @@ The capsule fills the BrowserWindow at `margin: 12px / width: calc(100% - 24px) 
 
 ## Interaction Model
 
-Three states animate between each other:
+Four states animate between each other:
 
 - Resting compact: status emoji with the context-usage ring + status label.
-- Hover compact: also reveals the window controls strip (toggle, settings, expand, minimize).
+- Hover compact: also reveals the window controls strip (toggle, capsule color, settings, expand, minimize).
 - Request expanded: approval card with command, meta, suggestion buttons, deny / approve, OR question card with answer form.
+- Dashboard expanded: full vertical feed of (1) the active request, when one is pending, (2) other pending requests with inline approve / deny, (3) all known Claude sessions with status chips, (4) paired devices with revoke + a button to generate a fresh pairing token, (5) the audit-event drawer (last 30, collapsible), and (6) a health footer that flips between sage "live" and rose "offline" depending on the WebSocket connection. Replaces the legacy browser dashboard at `http://127.0.0.1:4317/` — that URL now serves a small notice page directing users back to the bubble.
 
 The renderer picks the mode from daemon state; the main process animates native bounds. `:root` has a registered `@property --context-angle` so the conic ring fill morphs over `720ms` instead of jumping when ctx percentage updates.
 
@@ -132,8 +134,9 @@ Context occupancy renders as the conic ring around the status orb in compact/exp
 Compact controls live in a `surface-glass` strip that fades in on hover (left to right):
 
 - **Power (⏻)** — toggles the Companion approval / status hooks globally. Sand-gold tint when off; the orb desaturates as a passive cue. Backed by `~/.claude-companion/disabled` flag file (see [Pluggable on/off](#pluggable-onoff)).
-- **Gear (⚙)** — opens the local browser dashboard.
-- **Square (▢)** — toggles compact / expanded size.
+- **Color swatch** — opens the system color picker for the compact capsule surface. The selected color is stored locally in the renderer via `localStorage`; light colors switch compact status/control text to a darker contrast color while expanded approval/question panels keep the standard dark surface.
+- **Gear (⚙)** — toggles the bubble's dashboard mode (`420 × 540`). Click again from inside the dashboard to collapse back to compact. The legacy browser dashboard at `http://127.0.0.1:4317/` is gone — its content lives here now.
+- **Square (▢)** — toggles compact / expanded size. With a pending request it opens approval / question; otherwise the dashboard.
 - **Minus (−)** — minimizes the window.
 
 Expanded panel actions:

@@ -21,18 +21,24 @@ const DONE_ATTENTION_FROM_STATUSES = new Set([
   "waiting_answer"
 ]);
 const DONE_ATTENTION_TRIGGER_DELAY_MS = 260;
+const ISLAND_COLOR_STORAGE_KEY = "claude-code-companion.island-color.v1";
+const DEFAULT_ISLAND_COLOR = "#111318";
 
 const state = {
   socket: null,
   connected: false,
   sessions: [],
   requests: [],
+  devices: [],
+  events: [],
   selectedAnswers: {},
   mode: "compact",
   lastStatus: null,
-  attention: null
+  attention: null,
+  eventsExpanded: false
 };
 let doneAttentionTimer = null;
+let pairingHideTimer = null;
 
 const els = {
   island: document.querySelector(".island"),
@@ -43,6 +49,7 @@ const els = {
   contextLabel: document.getElementById("contextLabel"),
   contextFill: document.getElementById("contextFill"),
   requestPanel: document.getElementById("requestPanel"),
+  activeRequest: document.getElementById("activeRequest"),
   requestKind: document.getElementById("requestKind"),
   requestTool: document.getElementById("requestTool"),
   requestRisk: document.getElementById("requestRisk"),
@@ -55,11 +62,27 @@ const els = {
   suggestionList: document.getElementById("suggestionList"),
   denyRequest: document.getElementById("denyRequest"),
   refreshNow: document.getElementById("refreshNow"),
+  changeIslandColor: document.getElementById("changeIslandColor"),
+  islandColorInput: document.getElementById("islandColorInput"),
   openDashboard: document.getElementById("openDashboard"),
   maximizeWindow: document.getElementById("maximizeWindow"),
   minimizeWindow: document.getElementById("minimizeWindow"),
   closeWindow: document.getElementById("closeWindow"),
-  toggleEnabled: document.getElementById("toggleEnabled")
+  toggleEnabled: document.getElementById("toggleEnabled"),
+  pendingSection: document.getElementById("pendingSection"),
+  pendingCount: document.getElementById("pendingCount"),
+  pendingList: document.getElementById("pendingList"),
+  sessionsCount: document.getElementById("sessionsCount"),
+  sessionsList: document.getElementById("sessionsList"),
+  generatePairingToken: document.getElementById("generatePairingToken"),
+  pairingPanel: document.getElementById("pairingPanel"),
+  pairingTokenValue: document.getElementById("pairingTokenValue"),
+  pairingTokenMeta: document.getElementById("pairingTokenMeta"),
+  devicesList: document.getElementById("devicesList"),
+  toggleEvents: document.getElementById("toggleEvents"),
+  eventsList: document.getElementById("eventsList"),
+  dashHealthLabel: document.getElementById("dashHealthLabel"),
+  dashHealthMeta: document.getElementById("dashHealthMeta")
 };
 
 function latestSession() {
@@ -109,6 +132,90 @@ async function setMode(mode) {
   if (window.companionDesktop && window.companionDesktop.setMode) {
     await window.companionDesktop.setMode(mode);
   }
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+  }
+  return null;
+}
+
+function hexColorIsLight(color) {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) {
+    return false;
+  }
+  const channels = [1, 3, 5].map((start) => {
+    const value = parseInt(normalized.slice(start, start + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
+  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return luminance > 0.45;
+}
+
+function applyIslandColor(color) {
+  const nextColor = normalizeHexColor(color);
+  if (!nextColor) {
+    document.documentElement.style.removeProperty("--island-surface");
+    document.documentElement.style.removeProperty("--island-glass");
+    document.documentElement.style.setProperty("--island-color-preview", DEFAULT_ISLAND_COLOR);
+    delete document.body.dataset.islandTone;
+    if (els.islandColorInput) {
+      els.islandColorInput.value = DEFAULT_ISLAND_COLOR;
+    }
+    return;
+  }
+
+  document.documentElement.style.setProperty("--island-surface", nextColor);
+  document.documentElement.style.setProperty("--island-glass", `color-mix(in oklch, ${nextColor}, transparent 14%)`);
+  document.documentElement.style.setProperty("--island-color-preview", nextColor);
+  document.body.dataset.islandTone = hexColorIsLight(nextColor) ? "light" : "dark";
+  if (els.islandColorInput) {
+    els.islandColorInput.value = nextColor;
+  }
+}
+
+function initIslandColorPicker() {
+  if (!els.changeIslandColor || !els.islandColorInput) {
+    return;
+  }
+
+  let storedColor = null;
+  try {
+    storedColor = window.localStorage.getItem(ISLAND_COLOR_STORAGE_KEY);
+  } catch (_error) {
+    storedColor = null;
+  }
+
+  applyIslandColor(storedColor);
+
+  els.changeIslandColor.addEventListener("click", () => {
+    els.islandColorInput.click();
+  });
+
+  const saveSelectedColor = () => {
+    const nextColor = normalizeHexColor(els.islandColorInput.value);
+    if (!nextColor) {
+      return;
+    }
+    applyIslandColor(nextColor);
+    try {
+      window.localStorage.setItem(ISLAND_COLOR_STORAGE_KEY, nextColor);
+    } catch (_error) {
+      // Visual preference only; keep the current color even if persistence fails.
+    }
+  };
+
+  els.islandColorInput.addEventListener("input", saveSelectedColor);
+  els.islandColorInput.addEventListener("change", saveSelectedColor);
 }
 
 function contextUsageFrom(subject) {
@@ -223,15 +330,24 @@ function renderSession() {
 function renderRequest() {
   const request = activeRequest();
   state.selectedAnswers = {};
+  const inDashboard = state.mode === "dashboard";
 
   if (!request) {
-    els.requestPanel.hidden = true;
-    setMode("compact");
+    els.activeRequest.hidden = true;
+    if (inDashboard) {
+      // Dashboard stays open even with nothing pending — pending queue,
+      // sessions, devices, and audit events are still useful.
+      els.requestPanel.hidden = false;
+    } else {
+      els.requestPanel.hidden = true;
+      setMode("compact");
+    }
     return;
   }
 
   const question = isQuestionRequest(request);
   els.requestPanel.hidden = false;
+  els.activeRequest.hidden = false;
   els.requestKind.textContent = question ? "question" : "approval";
   els.requestTool.textContent = request.tool || "Tool request";
   els.requestRisk.textContent = request.risk || "low";
@@ -245,10 +361,15 @@ function renderRequest() {
 
   if (question) {
     renderAnswerForm(request);
-    setMode("question");
   } else {
     els.answerForm.replaceChildren();
-    setMode("approval");
+  }
+
+  // Don't override dashboard mode when a new request lands — the user has
+  // already chosen the overview surface. In any other expanded state, snap
+  // to the focused approval / question card.
+  if (!inDashboard) {
+    setMode(question ? "question" : "approval");
   }
 }
 
@@ -363,9 +484,359 @@ function renderAnswerForm(request) {
   };
 }
 
+/* ============================================================
+   Dashboard rendering (pending queue, sessions, devices,
+   pairing, audit events, health footer). Only paints when
+   the user is in dashboard mode; cheap no-ops otherwise so
+   the renderer doesn't churn on every WebSocket event. */
+
+function renderPendingQueue() {
+  if (!els.pendingSection || !els.pendingList) {
+    return;
+  }
+  const activeId = currentRequestId();
+  const others = state.requests.filter((req) => req.requestId !== activeId);
+
+  if (els.pendingCount) {
+    els.pendingCount.textContent = String(state.requests.length);
+  }
+
+  if (!others.length) {
+    els.pendingSection.hidden = true;
+    els.pendingList.replaceChildren();
+    return;
+  }
+
+  els.pendingSection.hidden = false;
+  const rows = others.map((req) => {
+    const row = document.createElement("div");
+    row.className = "dash-row";
+
+    const head = document.createElement("div");
+    head.className = "dash-row-head";
+
+    const title = document.createElement("span");
+    title.className = "dash-row-title";
+    title.textContent = req.tool || "Tool request";
+
+    const chip = document.createElement("span");
+    chip.className = "dash-chip";
+    chip.dataset.risk = req.risk || "low";
+    chip.textContent = req.risk || "low";
+    head.append(title, chip);
+    row.append(head);
+
+    if (req.summary) {
+      const summary = document.createElement("span");
+      summary.className = "dash-row-summary";
+      summary.textContent = req.summary;
+      row.append(summary);
+    }
+
+    const metaParts = [req.cwd, req.createdAt].filter(Boolean);
+    if (metaParts.length) {
+      const meta = document.createElement("span");
+      meta.className = "dash-row-meta";
+      meta.textContent = metaParts.join(" · ");
+      row.append(meta);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "dash-row-actions";
+
+    const allowBtn = document.createElement("button");
+    allowBtn.type = "button";
+    allowBtn.className = "dash-row-action";
+    allowBtn.dataset.variant = "approve";
+    allowBtn.textContent = "Approve";
+    allowBtn.addEventListener("click", () => {
+      decide(req.requestId, "allow", "Approved from desktop companion");
+    });
+
+    const denyBtn = document.createElement("button");
+    denyBtn.type = "button";
+    denyBtn.className = "dash-row-action";
+    denyBtn.textContent = "Deny";
+    denyBtn.addEventListener("click", () => {
+      decide(req.requestId, "deny", "Denied from desktop companion");
+    });
+
+    actions.append(allowBtn, denyBtn);
+    row.append(actions);
+    return row;
+  });
+
+  els.pendingList.replaceChildren(...rows);
+}
+
+function renderSessionsList() {
+  if (!els.sessionsList) {
+    return;
+  }
+  if (els.sessionsCount) {
+    els.sessionsCount.textContent = String(state.sessions.length);
+  }
+  if (!state.sessions.length) {
+    const empty = document.createElement("div");
+    empty.className = "dash-empty";
+    empty.textContent = "No Claude session state yet.";
+    els.sessionsList.replaceChildren(empty);
+    return;
+  }
+
+  const sorted = [...state.sessions].sort((a, b) => {
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
+
+  const rows = sorted.map((session) => {
+    const row = document.createElement("div");
+    row.className = "dash-row";
+
+    const head = document.createElement("div");
+    head.className = "dash-row-head";
+    const title = document.createElement("span");
+    title.className = "dash-row-title";
+    title.textContent = session.tool || session.hookEventName || "Claude Code";
+    const chip = document.createElement("span");
+    chip.className = "dash-chip";
+    chip.dataset.status = session.status || "idle";
+    chip.textContent = session.status || "idle";
+    head.append(title, chip);
+    row.append(head);
+
+    if (session.summary) {
+      const summary = document.createElement("span");
+      summary.className = "dash-row-summary";
+      summary.textContent = session.summary;
+      row.append(summary);
+    }
+
+    const sessionShort = session.sessionId ? String(session.sessionId).slice(0, 12) : "";
+    const metaParts = [sessionShort, session.cwd, session.updatedAt].filter(Boolean);
+    if (metaParts.length) {
+      const meta = document.createElement("span");
+      meta.className = "dash-row-meta";
+      meta.textContent = metaParts.join(" · ");
+      row.append(meta);
+    }
+    return row;
+  });
+
+  els.sessionsList.replaceChildren(...rows);
+}
+
+function renderDevices() {
+  if (!els.devicesList) {
+    return;
+  }
+  const active = state.devices.filter((device) => !device.revokedAt);
+  if (!active.length) {
+    const empty = document.createElement("div");
+    empty.className = "dash-empty";
+    empty.textContent = "No paired devices.";
+    els.devicesList.replaceChildren(empty);
+    return;
+  }
+
+  const rows = active.map((device) => {
+    const row = document.createElement("div");
+    row.className = "dash-row";
+
+    const head = document.createElement("div");
+    head.className = "dash-row-head";
+    const title = document.createElement("span");
+    title.className = "dash-row-title";
+    title.textContent = device.deviceName || "Unnamed device";
+    head.append(title);
+    row.append(head);
+
+    const idShort = device.deviceId ? String(device.deviceId).slice(0, 10) : "";
+    const lastSeen = device.lastSeenAt ? `last seen ${device.lastSeenAt}` : `paired ${device.createdAt || ""}`;
+    const meta = document.createElement("span");
+    meta.className = "dash-row-meta";
+    meta.textContent = [idShort, lastSeen].filter(Boolean).join(" · ");
+    row.append(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "dash-row-actions";
+    const revokeBtn = document.createElement("button");
+    revokeBtn.type = "button";
+    revokeBtn.className = "dash-row-action";
+    revokeBtn.textContent = "Revoke";
+    revokeBtn.addEventListener("click", () => revokeDevice(device.deviceId));
+    actions.append(revokeBtn);
+    row.append(actions);
+    return row;
+  });
+
+  els.devicesList.replaceChildren(...rows);
+}
+
+function describeEvent(ev) {
+  if (!ev || typeof ev !== "object") {
+    return "";
+  }
+  if (ev.type === "permission_request") {
+    const parts = [ev.tool, ev.risk ? `(${ev.risk})` : "", ev.summary].filter(Boolean);
+    return parts.join(" ");
+  }
+  if (ev.type === "permission_decision") {
+    const idShort = ev.requestId ? String(ev.requestId).slice(0, 8) : "";
+    const parts = [ev.decision, idShort && `[${idShort}]`, ev.reason].filter(Boolean);
+    return parts.join(" ");
+  }
+  if (ev.type === "device_paired" || ev.type === "device_revoked") {
+    return ev.deviceName || ev.deviceId || "";
+  }
+  return "";
+}
+
+function renderEvents() {
+  if (!els.eventsList) {
+    return;
+  }
+  const recent = state.events.slice(-30).reverse();
+  if (!recent.length) {
+    const empty = document.createElement("div");
+    empty.className = "dash-empty";
+    empty.textContent = "No audit events yet.";
+    els.eventsList.replaceChildren(empty);
+    return;
+  }
+
+  const rows = recent.map((ev) => {
+    const row = document.createElement("div");
+    row.className = "dash-event-row";
+    row.dataset.type = ev.type || "";
+
+    const time = document.createElement("time");
+    if (ev.createdAt) {
+      const date = new Date(ev.createdAt);
+      time.textContent = Number.isNaN(date.getTime())
+        ? ""
+        : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    const desc = document.createElement("span");
+    const strong = document.createElement("strong");
+    strong.textContent = ev.type || "event";
+    desc.append(strong);
+    const detail = describeEvent(ev);
+    if (detail) {
+      desc.append(" ", document.createTextNode(detail));
+    }
+
+    row.append(time, desc);
+    return row;
+  });
+
+  els.eventsList.replaceChildren(...rows);
+}
+
+function renderHealth() {
+  if (!els.dashHealthLabel || !els.dashHealthMeta) {
+    return;
+  }
+  const live = state.connected;
+  els.dashHealthLabel.textContent = live ? "live" : "offline";
+  const footer = els.dashHealthLabel.closest(".dash-footer");
+  if (footer) {
+    footer.dataset.state = live ? "live" : "offline";
+  }
+
+  const sessionsLabel = `${state.sessions.length} session${state.sessions.length === 1 ? "" : "s"}`;
+  const pendingLabel = `${state.requests.length} pending`;
+  els.dashHealthMeta.textContent = [pendingLabel, sessionsLabel, "127.0.0.1:4317"].join(" · ");
+}
+
+async function fetchDevices() {
+  try {
+    const data = await fetchJson("/devices");
+    state.devices = Array.isArray(data.devices) ? data.devices : [];
+  } catch (_error) {
+    state.devices = [];
+  }
+  renderDevices();
+}
+
+async function fetchEvents() {
+  try {
+    const data = await fetchJson("/events");
+    state.events = Array.isArray(data.events) ? data.events : [];
+  } catch (_error) {
+    state.events = [];
+  }
+  renderEvents();
+}
+
+async function revokeDevice(deviceId) {
+  if (!deviceId) {
+    return;
+  }
+  try {
+    await fetchJson("/devices/revoke", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId })
+    });
+  } catch (_error) {
+    // No retry — user will see the device still listed and can try again.
+  }
+  fetchDevices();
+}
+
+async function generatePairingToken() {
+  if (!els.pairingPanel || !els.pairingTokenValue || !els.pairingTokenMeta) {
+    return;
+  }
+  if (pairingHideTimer) {
+    clearTimeout(pairingHideTimer);
+    pairingHideTimer = null;
+  }
+  els.pairingPanel.hidden = false;
+  els.pairingTokenValue.textContent = "...";
+  els.pairingTokenMeta.textContent = "";
+
+  try {
+    const data = await fetchJson("/pairing-token");
+    els.pairingTokenValue.textContent = data.pairingToken || "";
+    if (data.expiresAt) {
+      els.pairingTokenMeta.textContent = `expires ${data.expiresAt}`;
+      const ttl = new Date(data.expiresAt).getTime() - Date.now();
+      if (Number.isFinite(ttl) && ttl > 0) {
+        pairingHideTimer = setTimeout(() => {
+          pairingHideTimer = null;
+          els.pairingPanel.hidden = true;
+          els.pairingTokenValue.textContent = "";
+          els.pairingTokenMeta.textContent = "";
+        }, ttl);
+      }
+    }
+  } catch (error) {
+    els.pairingTokenValue.textContent = "";
+    els.pairingTokenMeta.textContent = `error: ${error.message}`;
+  }
+}
+
+function refreshDashboardSnapshot() {
+  if (state.mode !== "dashboard") {
+    return;
+  }
+  fetchDevices();
+  if (state.eventsExpanded) {
+    fetchEvents();
+  }
+}
+
 function render() {
   renderSession();
   renderRequest();
+  renderPendingQueue();
+  renderSessionsList();
+  renderHealth();
+  if (state.eventsExpanded) {
+    renderEvents();
+  }
 }
 
 async function fetchJson(pathname, options = {}) {
@@ -391,6 +862,12 @@ async function refresh() {
   } catch (_error) {
     state.connected = false;
   }
+  // Audit events change on every approval flow; refresh them too when the
+  // user has the events drawer open. Devices are touched only on pair /
+  // revoke so we don't refetch them on each tick — see refreshDashboardSnapshot.
+  if (state.mode === "dashboard" && state.eventsExpanded) {
+    fetchEvents();
+  }
   render();
 }
 
@@ -400,6 +877,9 @@ function connectSocket() {
 
   socket.addEventListener("open", () => {
     state.connected = true;
+    if (state.mode === "dashboard") {
+      refreshDashboardSnapshot();
+    }
     render();
   });
 
@@ -496,8 +976,37 @@ if (els.refreshNow) {
 if (els.openDashboard) {
   els.openDashboard.addEventListener("click", () => window.companionDesktop.openDashboard());
 }
+if (els.generatePairingToken) {
+  els.generatePairingToken.addEventListener("click", generatePairingToken);
+}
+if (els.toggleEvents && els.eventsList) {
+  els.toggleEvents.addEventListener("click", () => {
+    state.eventsExpanded = !state.eventsExpanded;
+    els.eventsList.hidden = !state.eventsExpanded;
+    els.toggleEvents.textContent = state.eventsExpanded ? "Hide" : "Show";
+    els.toggleEvents.setAttribute("aria-expanded", String(state.eventsExpanded));
+    if (state.eventsExpanded) {
+      fetchEvents();
+    }
+  });
+}
 if (els.maximizeWindow) {
-  els.maximizeWindow.addEventListener("click", () => window.companionDesktop.toggleCompact());
+  els.maximizeWindow.addEventListener("click", () => {
+    // Smart expand: collapse if already expanded; otherwise pick the right
+    // expanded mode based on what's live. A pending request snaps to its
+    // approval / question card; an idle bubble opens the dashboard so the
+    // gear and square buttons aren't fighting for "show the overview."
+    if (state.mode !== "compact") {
+      window.companionDesktop.setMode("compact");
+      return;
+    }
+    const request = activeRequest();
+    if (request) {
+      window.companionDesktop.setMode(isQuestionRequest(request) ? "question" : "approval");
+      return;
+    }
+    window.companionDesktop.setMode("dashboard");
+  });
 }
 if (els.minimizeWindow) {
   els.minimizeWindow.addEventListener("click", () => window.companionDesktop.minimize());
@@ -536,8 +1045,18 @@ if (window.companionDesktop.onEnabledChanged) {
 }
 
 window.companionDesktop.onModeChanged((mode) => {
+  const previous = state.mode;
   state.mode = mode;
   document.body.dataset.mode = mode;
+
+  // Entering dashboard mode pulls fresh device + event data once. The
+  // pending queue, sessions, and health footer paint from existing state.
+  if (mode === "dashboard" && previous !== "dashboard") {
+    refreshDashboardSnapshot();
+  }
+  // Mode flips reshape what's visible (active-request vs full feed), so
+  // re-render once the new data-mode attribute is set on <body>.
+  render();
 });
 
 window.companionDesktop.onPeekChanged((peeking) => {
@@ -570,10 +1089,19 @@ if (window.companionDesktop.onAttentionChanged) {
   });
 }
 
+initIslandColorPicker();
+
 const HOVER_TO_EXPAND_MS = 100;
 const LEAVE_TO_COLLAPSE_MS = 320;
+// Window controls strip (power / color / gear / expand / minus) is JS-driven
+// instead of pure :hover so a brief drift off the painted capsule — into the
+// transparent 12 px BrowserWindow gutter, or a 1-frame hover flicker while
+// the window animates between compact and hover widths — doesn't snap the
+// strip closed mid-reach. Show is instant; hide waits CONTROLS_LEAVE_GRACE_MS.
+const CONTROLS_LEAVE_GRACE_MS = 420;
 let peekHoverTimer = null;
 let peekLeaveTimer = null;
+let controlsHideTimer = null;
 
 function acknowledgeAttentionFromPointer() {
   if (state.attention && window.companionDesktop.ackAttention) {
@@ -582,8 +1110,38 @@ function acknowledgeAttentionFromPointer() {
   }
 }
 
+function showWindowControls() {
+  if (controlsHideTimer) {
+    clearTimeout(controlsHideTimer);
+    controlsHideTimer = null;
+  }
+  document.body.dataset.controls = "visible";
+}
+
+function controlsKeepAliveFocused() {
+  const active = document.activeElement;
+  return !!(active && active !== document.body && active.closest && active.closest(".window-actions"));
+}
+
+function scheduleHideWindowControls() {
+  if (controlsHideTimer) {
+    return;
+  }
+  if (controlsKeepAliveFocused()) {
+    return;
+  }
+  controlsHideTimer = setTimeout(() => {
+    controlsHideTimer = null;
+    if (controlsKeepAliveFocused()) {
+      return;
+    }
+    delete document.body.dataset.controls;
+  }, CONTROLS_LEAVE_GRACE_MS);
+}
+
 document.body.addEventListener("pointerenter", () => {
   acknowledgeAttentionFromPointer();
+  showWindowControls();
 
   // Compact mode uses hover to expand the tiny island or reveal the edge peek.
   // Approval and question modes stay fully visible so the request is actionable.
@@ -605,6 +1163,9 @@ document.body.addEventListener("pointerenter", () => {
 
 document.body.addEventListener("pointermove", () => {
   acknowledgeAttentionFromPointer();
+  // Cheap re-assertion: any cursor motion inside the BrowserWindow keeps the
+  // controls strip alive and cancels a pending hide.
+  showWindowControls();
 
   // When the bubble peeks past a screen edge, the window slides out from
   // under the cursor without dispatching pointerleave/enter — so a later
@@ -630,6 +1191,8 @@ document.body.addEventListener("pointermove", () => {
 });
 
 document.body.addEventListener("pointerleave", () => {
+  scheduleHideWindowControls();
+
   if (state.mode !== "compact") {
     return;
   }
@@ -644,6 +1207,14 @@ document.body.addEventListener("pointerleave", () => {
     peekLeaveTimer = null;
     window.companionDesktop.peekUnhover();
   }, LEAVE_TO_COLLAPSE_MS);
+});
+
+// If a control had focus and then loses it (e.g., color picker dialog closes),
+// run the leave check so the strip can fade out cleanly.
+document.addEventListener("focusout", () => {
+  if (document.body.dataset.controls === "visible" && !document.body.matches(":hover")) {
+    scheduleHideWindowControls();
+  }
 });
 
 connectSocket();

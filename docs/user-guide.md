@@ -76,8 +76,9 @@ claude
 Hover the compact bubble to reveal the controls strip (left → right):
 
 - **⏻ Power** — toggle Companion approvals globally. Sand-gold tint when off; the orb desaturates as a passive cue. Same effect as creating `~/.claude-companion/disabled` by hand.
-- **⚙ Gear** — open the daemon's web dashboard at `http://127.0.0.1:4317/`.
-- **▢ Square** — toggle compact / expanded.
+- **● Color** — open the system color picker for the compact capsule's surface (saved in `localStorage`, light colors switch the compact text to a dark contrast tone).
+- **⚙ Gear** — toggle **dashboard mode** — the bubble's full overview: pending queue with inline allow / deny, every Claude session with status chips, paired devices with revoke + "Generate pairing token", an audit-event drawer (last 30, expandable), and a live / offline health footer. The legacy browser dashboard at `http://127.0.0.1:4317/` has been retired; that URL just shows a small notice now.
+- **▢ Square** — toggle compact / expanded. With a request pending it opens the approval / question card; otherwise it opens the dashboard.
 - **− Minus** — minimize.
 
 The bubble remembers its last position, compact/expanded mode, edge snap, and tucked slit state in `~/.claude-companion/desktop-state.json`. If your monitor layout changes, startup clamps the saved position back into the visible work area.

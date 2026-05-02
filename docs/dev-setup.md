@@ -35,11 +35,13 @@ Default URL:
 http://127.0.0.1:4317
 ```
 
-Local approval page:
+Daemon home:
 
 ```text
 http://127.0.0.1:4317/
 ```
+
+Visiting the daemon URL in a browser shows a small "use the desktop bubble" notice — the legacy approval page has been retired. All approvals, sessions, devices, pairing tokens, and audit events now live in the bubble's dashboard mode (gear icon).
 
 Health check:
 
@@ -65,15 +67,15 @@ Terminal 1:
 npm run daemon
 ```
 
-Open the local approval page:
+Terminal 2 — start the desktop bubble (the only first-party UI now):
 
-```text
-http://127.0.0.1:4317/
+```powershell
+npm run desktop
 ```
 
-When Claude Code creates a pending request, the page shows the current Claude status, tool, command summary, working directory, risk level, reason, and Approve/Deny buttons.
+When Claude Code creates a pending request, the bubble's status orb flips to `waiting_approval` (or `waiting_answer` for an `AskUserQuestion`), and the panel auto-expands to an approval card. Click the gear icon at any time to open dashboard mode for the multi-pending queue, sessions, devices, pairing token, and audit events.
 
-The page uses WebSocket realtime updates at:
+The bubble talks to the daemon over WebSocket at:
 
 ```text
 ws://127.0.0.1:4317/ws
@@ -107,8 +109,10 @@ The island persists its last bounds, mode, snapped edge, and tucked state in `~/
 
 The hover-only controls are:
 
-- gear opens the local browser dashboard/settings.
-- square toggles compact/expanded size.
+- power toggles Companion approvals globally (`~/.claude-companion/disabled` flag).
+- color swatch opens the system color picker for the compact capsule surface.
+- gear toggles dashboard mode — the bubble's full overview (pending queue, sessions, devices, pairing, audit events, health). Replaces the legacy browser dashboard.
+- square toggles compact / expanded — opens approval / question if a request is pending, otherwise opens the dashboard.
 - minus minimizes the window.
 
 The window does not start or stop Claude Code. It is another local client of the daemon, so the terminal remains the source of truth and Claude Code's native UI still works when the Companion approval hook is bypassed.

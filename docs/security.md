@@ -10,7 +10,7 @@ Trust boundary:
 Claude Code hook
   -> local Node hook script
   -> Windows daemon on 127.0.0.1
-  -> local approval page or future paired phone
+  -> desktop bubble (or future paired phone)
   -> Claude Code hook decision
 ```
 
@@ -227,7 +227,7 @@ ws://host:port/ws?token=authToken
   -> authenticated realtime connection
 ```
 
-Loopback requests from the same machine are still allowed without a token so the local browser approval page remains frictionless during development.
+Loopback requests from the same machine are still allowed without a token so the desktop bubble (and the manual `scripts/decide.js` CLI) remains frictionless during development.
 
 Non-loopback requests must use a valid device token for:
 

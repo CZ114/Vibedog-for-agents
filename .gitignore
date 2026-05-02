@@ -5,6 +5,9 @@ node_modules/
 
 # Claude local project settings can contain machine-specific hook commands.
 .claude/settings.local.json
+# settings.json under .claude/ ends up listing absolute Windows paths and
+# user-specific plugin/skill ids, so it's not portable to other clones.
+.claude/settings.json
 
 # Local runtime output
 *.log
@@ -12,3 +15,6 @@ node_modules/
 
 # Obsidian editor state
 .obsidian/
+
+# Private chat / scratch logs that shouldn't ship to public clones.
+conversationWith*.md

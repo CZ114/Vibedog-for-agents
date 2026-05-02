@@ -1,6 +1,8 @@
-# Claude Code Companion
+# Clawdeck
 
-Claude Code Companion is a Windows-first companion for Claude Code, with iOS planned after the desktop loop feels good. The first goal is not remote terminal control. The first goal is a reliable, clear, and safe status and approval loop:
+> Floating desktop companion for Claude Code on Windows. iOS planned.
+
+Clawdeck (internally still referred to as "Claude Code Companion" throughout the docs and protocol — same project) is a Windows-first companion for Claude Code, with iOS planned after the desktop loop feels good. The first goal is not remote terminal control. The first goal is a reliable, clear, and safe status and approval loop:
 
 ```text
 Claude Code on Windows
@@ -100,22 +102,21 @@ Run the floating desktop companion:
 npm run desktop
 ```
 
-Open the local approval page:
+Approvals, sessions, devices, pairing, and audit events all live inside the
+desktop bubble's dashboard mode (gear icon in the controls strip). The
+daemon's HTTP root just shows a small notice now:
 
 ```text
 http://127.0.0.1:4317/
 ```
 
-The page uses realtime events from:
+Underneath, the bubble (and any other client) talks to the daemon over:
 
 ```text
-ws://127.0.0.1:4317/ws
-```
-
-Current session state API:
-
-```text
+ws://127.0.0.1:4317/ws        # realtime events
 http://127.0.0.1:4317/sessions
+http://127.0.0.1:4317/pending-requests
+http://127.0.0.1:4317/permission-decisions
 ```
 
 Native approval hook:

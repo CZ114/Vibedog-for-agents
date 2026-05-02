@@ -146,8 +146,8 @@ Aim is "Apple-like" smoothness — soft easing, durations long enough to perceiv
 
 ### Compact island — hover
 
-- Width animates to 202 × 42 with `--ease-spring-soft`.
-- Window controls (gear / expand / minus) materialize in `--surface-glass` strip with `backdrop-filter: blur(10px) saturate(1.2)`. Buttons **20 × 20**, radius 7, `--ink-1` glyph; hover lifts to `--ink-0` with a subtle background tint (no fill color shift).
+- Width animates to 224 × 42 with `--ease-spring-soft`.
+- Window controls (power / color swatch / gear / expand / minus) materialize in `--surface-glass` strip with `backdrop-filter: blur(10px) saturate(1.2)`. Buttons **20 × 20**, radius 7, `--ink-1` glyph; hover lifts to `--ink-0` with a subtle background tint. The color swatch opens the system color picker and stores the selected compact capsule surface color locally; light custom colors use dark compact text/control contrast.
 - Status text remains; **no ctx label appears on hover** (deliberate — the ring already encodes ctx).
 
 ### Expanded panel — approval
