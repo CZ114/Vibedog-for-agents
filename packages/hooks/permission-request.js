@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const http = require("node:http");
-const { claudeNoopDecision, claudePermissionRequestDecision } = require("../shared/protocol");
+const { claudeNoopDecision, claudePermissionRequestDecision, isCompanionDisabled } = require("../shared/protocol");
 
 const PORT = Number(process.env.CCC_PORT || 4317);
 const HOST = process.env.CCC_HOST || "127.0.0.1";
@@ -85,7 +85,7 @@ async function main() {
     return;
   }
 
-  if (BYPASS_APPROVAL) {
+  if (BYPASS_APPROVAL || isCompanionDisabled()) {
     writeNoop();
     return;
   }

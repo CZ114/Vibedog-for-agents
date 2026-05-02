@@ -1,0 +1,119 @@
+{
+  "_comment": "Companion global hook coverage. Drop the hooks block into ~/.claude/settings.json (Windows: %USERPROFILE%\\.claude\\settings.json). Edit the absolute paths if you move the Companion repo.",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 60,
+            "statusMessage": "Waiting for Claude Code Companion approval",
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\pre-tool-use.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 60,
+            "statusMessage": "Waiting for Claude Code Companion approval",
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\permission-request.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "timeout": 10,
+            "command": "node \"D:\\Imperial\\individual\\claude-code-companion\\packages\\hooks\\event.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

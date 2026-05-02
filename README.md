@@ -31,59 +31,61 @@ Build an ambient companion and approval layer for Claude Code:
 - [Development Setup](docs/dev-setup.md): how to run the daemon, hook, and smoke test.
 - [User Guide](docs/user-guide.md): day-to-day commands for daemon, hooks, and the floating companion.
 - [Desktop Companion](docs/desktop-companion.md): Electron floating window behavior and next steps.
+- [Design Language](docs/design-language.md): tokens, motion, and component recipes for any new UI work. Visual preview at [docs/design-language-v0.html](docs/design-language-v0.html).
 
 ## First Milestone
 
 The first milestone is deliberately small:
 
 1. Run a local daemon on Windows.
-2. Register a Claude Code native `PermissionRequest` hook.
-3. Send Bash and PowerShell native permission requests from the hook to the daemon.
-4. Route `AskUserQuestion` through `PreToolUse` so a remote UI can answer Claude's clarifying questions.
-5. Track Claude working states like `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, and `failed`.
-6. Show the status and request in a Windows floating companion.
-7. Return `allow`, `deny`, `always_allow`, or `answers` to Claude Code.
+2. Register Claude Code's `PermissionRequest` hook with matcher `""` so every tool's permission gate (Bash, PowerShell, Read, Edit, Write, Glob, WebFetch, MCP servers) routes through the daemon.
+3. Route `ExitPlanMode` and `AskUserQuestion` through `PreToolUse` (those don't fire `PermissionRequest`) so the bubble can show plan content + answer questions.
+4. Track Claude working states like `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`.
+5. Show the status and request in a Windows floating companion. `permission_suggestions[]` from each request render as their own buttons (mirroring Claude Code's terminal `1. Yes / 2. Yes, allow X` options).
+6. Return `allow`, `deny`, `always_allow` (with `suggestionIndex`), or `answers` to Claude Code.
+7. Provide a global on/off (Power button + `~/.claude-companion/disabled` flag file) so the user can hand control back to Claude Code's native UI without uninstalling.
 
 Everything else waits until this approval loop is boringly reliable.
 
-## Stage 0 Quick Start
+## Quick Start
 
 Requires Node.js 20+.
 
-Install dependencies:
+Install dependencies + run the smoke test:
 
 ```powershell
 npm install
-```
-
-```powershell
 npm run smoke
 ```
 
-Install or update hooks in a Claude Code target repo:
+**Install hooks globally** (recommended — bubble works in every project):
+
+```powershell
+npm run setup-user-hooks
+npm run doctor
+```
+
+`setup-user-hooks` merges the Companion `hooks` block into `%USERPROFILE%\.claude\settings.json`, preserves unrelated Claude Code settings, writes a timestamped backup before changes, and uses the current repo path automatically. Use `npm run setup-user-hooks -- --dry-run` to preview, or `npm run setup-user-hooks -- --uninstall` to remove only Companion-managed global hooks. [examples/user-settings.example.json](examples/user-settings.example.json) remains the reference shape for hand-diffing.
+
+Per-project install (legacy, if you want hooks scoped to one repo):
 
 ```powershell
 npm run setup-hooks -- D:\Imperial\individual\week15
-```
-
-Install only status hooks or only approval hooks:
-
-```powershell
 npm run setup-hooks -- D:\Imperial\individual\week15 --status-only
 npm run setup-hooks -- D:\Imperial\individual\week15 --approval-only
-```
-
-Remove Companion-managed hooks from a target repo:
-
-```powershell
 npm run setup-hooks -- D:\Imperial\individual\week15 --disable
 ```
 
-Runtime switches:
+Runtime toggles:
 
 ```powershell
-$env:CCC_BYPASS_APPROVAL_HOOK = "true"  # Claude Code uses native approval/question UI
-$env:CCC_DISABLE_STATUS_HOOK = "true"   # Companion stops recording status hooks
+# Hard disable / re-enable from anywhere (the bubble's ⏻ button does the same):
+type nul > %USERPROFILE%\.claude-companion\disabled
+del %USERPROFILE%\.claude-companion\disabled
+
+# Session-scoped env switches (take effect in the next Claude Code launched in the shell):
+$env:CCC_BYPASS_APPROVAL_HOOK = "true"   # Claude Code uses native approval/question UI
+$env:CCC_DISABLE_STATUS_HOOK  = "true"   # Companion stops recording status hooks
 ```
 
 Run the daemon:

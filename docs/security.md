@@ -28,10 +28,12 @@ The Electron desktop companion is a loopback-only local client of the same daemo
 - Do not store approval history on disk yet.
 - Store paired devices locally in `.claude-companion/devices.json`.
 - Store only hashes of device auth tokens, not raw tokens.
+- The on-disk surface area is intentionally small: `.claude-companion/devices.json` (paired devices, hashed tokens) and `~/.claude-companion/learned-context.json` (per-family context window heuristics — model id + integer + timestamp, no transcript content).
+- The user-visible on/off switch is `~/.claude-companion/disabled` (zero-byte sentinel). Each hook script checks for it at startup and returns noop. The bubble's Power button writes / removes it.
 - Do not allow non-loopback approval connections unless they present a paired device token.
 - Do not use wildcard CORS for the local approval API.
-- Use `PermissionRequest` as the primary remote approval path.
-- Keep `PreToolUse` for preflight validation, emergency deny behavior, and `AskUserQuestion` answer handoff.
+- Use `PermissionRequest` as the primary remote approval path. Matcher `""` covers every tool whose permission Claude Code would normally gate (Read/Edit/Write/Glob/Grep/WebFetch/MCP servers/Bash/PowerShell when not pre-approved).
+- Keep `PreToolUse` for preflight validation, emergency deny behavior, and the `ExitPlanMode` / `AskUserQuestion` flows where `PermissionRequest` does not fire.
 - Keep lifecycle status hooks non-blocking; status capture must not decide whether Claude Code may continue.
 - Allow explicit local bypass switches for returning to Claude Code's native UI.
 - Keep the desktop companion on `127.0.0.1` unless the daemon's paired-device LAN mode is explicitly enabled later.
@@ -52,7 +54,9 @@ Claude Code permission rule asks for approval
 
 `PreToolUse` is useful for preflight scanning. Returning `allow` from `PreToolUse` can skip Claude Code's interactive permission prompt, so do not use it as the default remote approval surface.
 
-`AskUserQuestion` is the exception. It is a tool call rather than a permission dialog, so Companion handles it with a targeted `PreToolUse` hook. The hook must return `permissionDecision: "allow"` together with `updatedInput.questions` and `updatedInput.answers`; returning `allow` without answers is not enough.
+`AskUserQuestion` and `ExitPlanMode` are exceptions. They are tool calls rather than permission dialogs, so Companion handles them with a `PreToolUse` matcher of `ExitPlanMode|AskUserQuestion`. For `AskUserQuestion`, the hook must return `permissionDecision: "allow"` together with `updatedInput.questions` and `updatedInput.answers`. For `ExitPlanMode`, the hook can `deny` from the bubble to cancel the plan, but `allow` only forwards the call — Claude Code still surfaces its native 1/2/3/4 mode picker in the terminal because Anthropic has not exposed those modes via hook ([anthropics/claude-code#14259](https://github.com/anthropics/claude-code/issues/14259)).
+
+When the hook returns `always_allow` for `PermissionRequest`, the desktop renderer also passes `suggestionIndex` so the daemon can pick the exact `permission_suggestions[i]` the user chose; that suggestion becomes `decision.updatedPermissions`. CLI clients without a UI fall back to the first `behavior: "allow"` suggestion.
 
 ## Runtime Switches
 
@@ -74,13 +78,32 @@ When set before launching Claude Code, lifecycle status hooks return no-op JSON 
 
 These are local environment switches. They do not modify `.claude/settings.local.json`.
 
-Persistent disable:
+Runtime global toggle (without restarting Claude Code):
+
+```powershell
+type nul > %USERPROFILE%\.claude-companion\disabled    # disable
+del %USERPROFILE%\.claude-companion\disabled           # re-enable
+```
+
+The desktop bubble's Power button writes / removes this sentinel; manual touch is equivalent. Each hook script reads it at startup via `isCompanionDisabled()` from `packages/shared/protocol.js` and returns noop when present.
+
+Global hook install / uninstall:
+
+```powershell
+npm run setup-user-hooks
+npm run setup-user-hooks -- --dry-run
+npm run setup-user-hooks -- --uninstall
+```
+
+The installer only removes and rewrites Companion-managed hook entries. It keeps unrelated user settings intact and writes a backup before saving. `npm run doctor` checks that the installed hook commands point at existing scripts and warns when global and project-level Companion hooks are both present.
+
+Persistent uninstall (per-project):
 
 ```powershell
 npm run setup-hooks -- D:\Imperial\individual\week15 --disable
 ```
 
-This removes Companion-managed hook entries from the target repo. It does not remove unrelated user hooks or permission rules.
+Persistent uninstall (global): drop the `hooks` block from `~/.claude/settings.json`. Both leave unrelated Claude Code settings, plugins, and user hooks alone.
 
 ## Status Model
 

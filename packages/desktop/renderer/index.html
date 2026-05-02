@@ -29,6 +29,7 @@
       </div>
 
       <div class="window-actions" aria-label="Window controls">
+        <button id="toggleEnabled" aria-label="Toggle Companion" title="Toggle Companion approvals" type="button">&#9211;</button>
         <button id="openDashboard" aria-label="Open settings" title="Open settings" type="button">&#9881;</button>
         <button id="maximizeWindow" aria-label="Expand" title="Expand" type="button">&#9633;</button>
         <button id="minimizeWindow" aria-label="Minimize" title="Minimize" type="button">&#8722;</button>
@@ -61,8 +62,8 @@
 
       <div class="actions" id="approvalActions">
         <button class="approve" id="approveRequest" type="button">Approve</button>
+        <div class="suggestion-list" id="suggestionList"></div>
         <button class="deny" id="denyRequest" type="button">Deny</button>
-        <button class="allow" id="alwaysAllowRequest" type="button" hidden>Always Allow</button>
       </div>
     </section>
   </main>

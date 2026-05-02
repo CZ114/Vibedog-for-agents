@@ -20,6 +20,8 @@ Scope:
 - Temporary web or CLI test client can approve, deny, always-allow, or answer before richer clients exist.
 - Local web page shows current Claude session status.
 - Setup CLI installs, updates, partially enables, or disables target repo hook configuration.
+- User-level setup CLI installs, refreshes, dry-runs, or uninstalls Companion-managed global hooks without overwriting unrelated Claude Code settings.
+- Doctor CLI checks global hook coverage, hook paths, daemon health, disabled flag state, and global/project double-hook risk.
 - Runtime switches can bypass remote approval or status capture without editing settings JSON.
 - Basic risk label for commands: `low`, `medium`, `high`.
 
@@ -41,6 +43,8 @@ Exit criteria:
 - `AskUserQuestion` can be answered remotely with `updatedInput.answers`.
 - Session status changes can be observed as `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`, or `blocked`.
 - A target repo can be configured idempotently without hand-editing JSON.
+- User-level hooks can be installed idempotently with `npm run setup-user-hooks`.
+- `npm run doctor` reports missing global hooks, bad paths, daemon status, disabled flag state, and double-hook risk.
 - `CCC_BYPASS_APPROVAL_HOOK=true` hands approval/question control back to Claude Code's native UI.
 - `CCC_DISABLE_STATUS_HOOK=true` stops Companion status capture.
 - `npm run setup-hooks -- <target-repo> --disable` removes Companion-managed hooks while preserving unrelated settings.
@@ -60,18 +64,24 @@ Goal: Make Claude Code status and approvals visible from a tiny always-on-top de
 Scope:
 
 - Electron floating island for Windows development.
-- Transparent, frameless, movable, always-on-top window.
-- Resting compact state that shows the status emoji, context-usage ring, and Claude state label.
-- Hover compact state that keeps the Claude state visible while revealing hover controls.
-- Native window bounds animation that expands from compact island to approval/question panel.
-- Screen-edge snapping with a context-only peek slit when the user drags the island near an edge.
-- Done-state completion cue that briefly slides the tucked edge bubble back out with a green attention animation and stays unacknowledged until the pointer enters the bubble.
-- Expanded state keeps context usage as a ring around the status emoji.
-- Current state summary for `idle`, `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`, and `blocked`.
-- Approval card for native Bash and PowerShell permission requests.
-- Answer form for `AskUserQuestion`.
-- Approve, deny, always-allow, answer, hover-only settings/dashboard, expand, and minimize controls.
-- WebSocket first, polling fallback.
+- Transparent, frameless, movable, always-on-top window. All Win11 rectangle sources opted out (`thickFrame: false`, `roundedCorners: false`, `backgroundMaterial: "none"`, `hasShadow: false`) so the visible surface is a pure capsule.
+- Two-tier sizing: CAPSULE_BOUNDS for the visible bubble, MODE_BOUNDS = capsule + `BUBBLE_PADDING` (12 px gutter) for the BrowserWindow. Snap and peek math operates in capsule coords.
+- Resting compact state shows the status emoji + conic context-usage ring + status label.
+- Hover compact state reveals the controls strip (toggle / settings / expand / minimize).
+- Native window bounds animation expands from compact capsule to approval / question panel.
+- Screen-edge snapping with a context-only peek slit on drag-to-edge.
+- Slit hover detection via main-process cursor polling (browser hover state is stale after the BrowserWindow slides off-screen).
+- Done-state attention cue: capsule slides out for `DONE_ATTENTION_MS = 10 min` with a sage→warm sweep; after re-tucking, the slit pulses with sage glow until acknowledged.
+- Desktop placement persistence in `~/.claude-companion/desktop-state.json` for bounds, mode, snapped edge, and tucked state, with startup clamping for monitor/resolution changes.
+- Higher-priority always-on-top guard so the island reasserts topmost behavior while visible.
+- Status summary for `idle`, `thinking`, `running_tool`, `waiting`, `waiting_approval`, `waiting_answer`, `done`, `failed`, `blocked`.
+- Approval card covers every event Claude Code can hook for user input: `PreToolUse(Bash|PowerShell|ExitPlanMode|AskUserQuestion)`, `PermissionRequest` matcher `""` (Read / Edit / Write / Glob / Grep / WebFetch / MCP tools).
+- `permission_suggestions[]` rendered as one button per "always allow X"; the picked index round-trips to the daemon as `decision.updatedPermissions`.
+- Answer form for `AskUserQuestion` (option pills + free-text fallback).
+- Pluggable on/off via `~/.claude-companion/disabled` flag file (Power button on the bubble + manual `type nul`).
+- Per-family learned context window in `~/.claude-companion/learned-context.json` (peak-overrun + compact-observed signals; never auto-demotes).
+- Design tokens, motion library, and component recipes codified in [docs/design-language.md](design-language.md) with a v0 visual preview at [docs/design-language-v0.html](design-language-v0.html).
+- WebSocket first, HTTP polling fallback.
 
 Non-goals:
 
@@ -89,6 +99,7 @@ Exit criteria:
 - The user can glance at the window and know whether Claude is running, blocked, waiting, failed, or done.
 - The window stays compact by default and expands only when action is needed.
 - A tucked edge bubble visibly announces a fresh `done` transition and clears that reminder only after pointer acknowledgement.
+- Window position, edge tuck, and mode survive desktop restart, and restored bounds stay reachable after display changes.
 
 Docs to update:
 
@@ -110,7 +121,7 @@ Scope:
 - Click or hover expands into the approval/status panel.
 - Local notification or attention cue when Claude needs the user.
 - Basic positioning persistence.
-- Optional tray menu for dashboard, compact mode, and quit.
+- Tray menu, approval history, and stronger high-risk confirmation are captured as later product hardening work, not blockers for the first pet mode.
 
 Non-goals:
 

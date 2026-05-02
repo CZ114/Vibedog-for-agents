@@ -539,7 +539,7 @@ async function main() {
     }
 
     const oneMillionTranscript = path.join(ENV.CCC_DATA_DIR, "transcript-context-1m.jsonl");
-    writeTranscriptUsage(oneMillionTranscript, "claude-opus-4-7[1m]", {
+    writeTranscriptUsage(oneMillionTranscript, "smoke-context-model[1m]", {
       input_tokens: 100000
     });
     await runHook("packages/hooks/event.js", {

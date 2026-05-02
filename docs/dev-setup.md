@@ -103,6 +103,8 @@ ws://127.0.0.1:4317/ws
 
 At rest, it shows a compact status emoji with the context ring plus the Claude state label. Hovering the island expands it to reveal controls without hiding the status. Dragging it to a screen edge tucks it into a small context-only slit; dragging that slit back out detaches it into a standalone bubble again. When Claude reaches `done` while tucked, the bubble briefly slides out with a green completion glow and can tuck itself back, but the completion reminder stays active until the user moves the pointer over the bubble; the slit pulses only while that reminder is unacknowledged. When Claude needs input, it expands into an approval or answer panel.
 
+The island persists its last bounds, mode, snapped edge, and tucked state in `~/.claude-companion/desktop-state.json`. Startup clamps the saved bounds back into the current work area, and the main process periodically reapplies a high always-on-top level so normal full-screen windows are less likely to cover the bubble.
+
 The hover-only controls are:
 
 - gear opens the local browser dashboard/settings.
@@ -138,7 +140,50 @@ npm run answer -- req_abc '{"Which implementation should I use?":"Simple"}'
 
 ## Configure Claude Code Hooks
 
-For the real approval product path, use Claude Code's native `PermissionRequest` hook plus Companion's non-blocking status hook. Install or update the target repo from the Companion repo:
+Two installation models. Pick one:
+
+### Global (one-time, covers every project)
+
+Recommended. The Companion bubble fires for every project on the machine without any per-repo setup. Hooks live in your user-level `~/.claude/settings.json` and point at absolute paths under this repo.
+
+The full hook set covers every interaction event Claude Code can preempt — `PreToolUse` (matcher `ExitPlanMode|AskUserQuestion` for the answer / plan flow), `PreToolUse` matcher `""` for status, `PermissionRequest` matcher `""` for all permission gates including MCP tools, `WebFetch`, file edits outside cwd, and the rest, plus `PostToolUse` / `PostToolUseFailure` / `UserPromptSubmit` / `Notification` / `Stop` / `SessionEnd` for status. `Notification` is what surfaces MCP `Elicitation` dialogs as `waiting` (we deliberately don't preempt those — the form input is too rich to render in the bubble; user answers in terminal, status reflects state).
+
+Install or refresh global hooks from the Companion repo:
+
+```powershell
+npm run setup-user-hooks
+```
+
+The installer reads `%USERPROFILE%\.claude\settings.json`, removes older Companion-managed hook entries, adds the current global hook set with this repo's absolute paths, preserves unrelated settings such as `enabledPlugins`, and writes a timestamped backup before saving. Preview without writing:
+
+```powershell
+npm run setup-user-hooks -- --dry-run
+```
+
+Remove only Companion-managed global hooks:
+
+```powershell
+npm run setup-user-hooks -- --uninstall
+```
+
+Run the doctor after install:
+
+```powershell
+npm run doctor
+```
+
+`doctor` checks Node version, hook file paths, user-level hook coverage, the disabled flag, daemon health, and whether a project also has Companion-managed hooks that could double-fire. A reference copy of the hook shape is checked in at [examples/user-settings.example.json](../examples/user-settings.example.json) for hand-diffing.
+
+**On / off switch.** Two equivalent ways:
+
+- **Bubble button** — the power glyph on the left of the hover-controls strip toggles approvals globally. Sand-gold tint = off; the orb desaturates as a passive indicator.
+- **Flag file** — `~/.claude-companion/disabled` (created/removed by the button). Touch it manually when scripting (`type nul > %USERPROFILE%\.claude-companion\disabled`), delete to re-enable. Each hook script checks this file at startup and returns noop if present, so Claude Code falls back to its native terminal prompts.
+
+The env vars `CCC_BYPASS_APPROVAL_HOOK=true` (approval) and `CCC_DISABLE_STATUS_HOOK=true` (status) remain as session-scoped equivalents for shell-level overrides.
+
+### Per-project (legacy)
+
+Original install model. Runs `setup-hooks` against a target repo and writes hooks to its `.claude/settings.json`. Useful when you want Companion behavior for one repo only, or want to override the global config for a specific project (in that case, drop the `hooks` block in `~/.claude/settings.json` first to avoid double-firing).
 
 ```powershell
 npm run setup-hooks -- D:\Imperial\individual\week15
@@ -177,61 +222,19 @@ npm run setup-hooks -- D:\Imperial\individual\week15 --disable
 
 The example asks for Bash and PowerShell commands, forwards Claude's native permission request to Companion, routes `AskUserQuestion` through the answer flow, and sends non-blocking status events to Companion.
 
-The hook groups in the example are:
+The hook groups in the global config are:
 
-- `UserPromptSubmit` -> `packages/hooks/event.js` for `thinking`
-- `PreToolUse` with matcher `*` -> `packages/hooks/event.js` for `running_tool`
-- `PreToolUse` with matcher `AskUserQuestion` -> `packages/hooks/pre-tool-use.js` for `waiting_answer`
-- `PermissionRequest` with matcher `Bash|PowerShell` -> `packages/hooks/permission-request.js` for `waiting_approval`
-- `PostToolUse` -> `packages/hooks/event.js` for returning to `thinking`
-- `PostToolUseFailure` -> `packages/hooks/event.js` for `failed`
-- `Notification` -> `packages/hooks/event.js` for `waiting` hints when Claude Code asks for user input or terminal attention
-- `Stop` -> `packages/hooks/event.js` for `done`
+- `PreToolUse` matcher `ExitPlanMode|AskUserQuestion` -> `packages/hooks/pre-tool-use.js` (plan + answer flow)
+- `PreToolUse` matcher `""` -> `packages/hooks/event.js` (status: `running_tool`)
+- `PermissionRequest` matcher `""` -> `packages/hooks/permission-request.js` (every permission gate, including MCP servers, `WebFetch`, `Read` / `Edit` / `Write` on new paths, and `Bash` / `PowerShell` commands not in `permissions.allow`)
+- `PostToolUse` matcher `""` -> `packages/hooks/event.js` (status: `thinking`)
+- `PostToolUseFailure` matcher `""` -> `packages/hooks/event.js` (status: `failed`)
+- `UserPromptSubmit` -> `packages/hooks/event.js` (status: `thinking`)
+- `Notification` -> `packages/hooks/event.js` (status: `waiting` for permission prompts, MCP elicitation, idle prompts)
+- `Stop` -> `packages/hooks/event.js` (status: `done`)
+- `SessionEnd` -> `packages/hooks/event.js` (status: `idle`)
 
-The core approval portion looks like this:
-
-```json
-{
-  "permissions": {
-    "ask": [
-      "Bash",
-      "PowerShell"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "timeout": 60,
-            "statusMessage": "Waiting for Claude Code Companion answer",
-            "command": "node \"D:/Imperial/individual/claude-code-companion/packages/hooks/pre-tool-use.js\""
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "timeout": 60,
-            "statusMessage": "Waiting for Claude Code Companion approval",
-            "command": "node \"D:/Imperial/individual/claude-code-companion/packages/hooks/permission-request.js\""
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Then run Claude Code from the repo root and ask it to run a harmless command. The daemon should show a pending request.
-
-`PermissionRequest` is the preferred approval path for tool permissions because it fires at Claude Code's native permission dialog. `PreToolUse` is still used for `AskUserQuestion`, where the hook must return `updatedInput.answers`.
+See [examples/user-settings.example.json](../examples/user-settings.example.json) for the canonical JSON. `PermissionRequest` is the primary path because it fires only when Claude Code would actually show a prompt; pre-approved tools / paths skip it. `PreToolUse` is reserved for `ExitPlanMode` (the plan flow doesn't go through `PermissionRequest`) and `AskUserQuestion` (the hook must return `permissionDecision: "allow"` with `updatedInput.answers`).
 
 `packages/hooks/event.js` is intentionally non-blocking. If the daemon is down, Claude Code should continue; only the approval hooks fail closed.
 
@@ -248,6 +251,8 @@ CCC_DISABLE_STATUS_HOOK=false
 CCC_DATA_DIR=.claude-companion
 CCC_CONTEXT_WINDOW_TOKENS=
 CCC_MODEL_CONTEXT_WINDOWS=
+CCC_DISABLE_1M_CONTEXT=false
+CLAUDE_CODE_DISABLE_1M_CONTEXT=
 ```
 
 Use `CCC_FAIL_OPEN=true` only while debugging. The default is fail-closed.
@@ -278,6 +283,14 @@ Context ring sizing:
 - Leave `CCC_CONTEXT_WINDOW_TOKENS` empty for normal model-based behavior.
 - Set `CCC_CONTEXT_WINDOW_TOKENS=200000` to force one window size while debugging.
 - Set `CCC_MODEL_CONTEXT_WINDOWS` to a JSON map when a model id or alias needs a local override, for example `{"claude-opus-4-7":1000000,"sonnet":200000}`.
+- Opus 4.6 / 4.7 and Sonnet 4.6 default to 1M because Claude Code itself does on Max/Team/Enterprise plans. Set `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (the upstream Claude Code flag) or `CCC_DISABLE_1M_CONTEXT=true` to fall those models back to 200,000.
+- If `usedTokens` ever exceeds the resolved window, the daemon promotes that line to 1M and tags it `windowSource: "observed-overrun"` so the ring never overshoots 100%.
+
+Learned context windows:
+
+- The daemon writes confirmed per-family windows to `~/.claude-companion/learned-context.json` (per-user, shared across projects). Keys are model families (`opus-4-7`, `sonnet-4-6`).
+- A peak `usedTokens > 200,000` for a family records that family at 1M. A drop pattern (`current < peak * 0.3`, with `peak >= 50,000`) treats the prior peak as the model's compact threshold and snaps to the nearest of 200k / 1M.
+- Learned values never auto-demote. Delete the file to reset, or override at runtime with `CCC_MODEL_CONTEXT_WINDOWS`.
 
 ## Pairing Token Flow
 

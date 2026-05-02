@@ -25,5 +25,10 @@ contextBridge.exposeInMainWorld("companionDesktop", {
   },
   onAttentionChanged: (callback) => {
     ipcRenderer.on("window:attention-changed", (_event, attention) => callback(attention || null));
+  },
+  getEnabled: () => ipcRenderer.invoke("companion:get-enabled"),
+  setEnabled: (enabled) => ipcRenderer.invoke("companion:set-enabled", enabled),
+  onEnabledChanged: (callback) => {
+    ipcRenderer.on("companion:enabled-changed", (_event, enabled) => callback(Boolean(enabled)));
   }
 });

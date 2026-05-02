@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Companion · v0 design preview</title>
+<style>
+  :root {
+    color-scheme: dark;
+
+    /* surfaces */
+    --surface-0: oklch(13% 0.012 270);
+    --surface-1: oklch(17% 0.014 270);
+    --surface-2: oklch(22% 0.016 270);
+    --surface-glass: oklch(20% 0.014 270 / 0.86);
+
+    /* ink */
+    --ink-0: oklch(95% 0.014 80);
+    --ink-1: oklch(70% 0.012 250);
+    --ink-2: oklch(50% 0.010 250);
+    --line: oklch(60% 0 0 / 0.10);
+
+    /* accents (semantic) */
+    --accent: oklch(72% 0.06 195);
+    --accent-slate: oklch(60% 0.03 250);
+    --accent-warm: oklch(78% 0.08 70);
+    --accent-warm-hi: oklch(82% 0.10 70);
+    --accent-sage: oklch(72% 0.06 150);
+    --accent-rose: oklch(70% 0.07 25);
+
+    --shadow-inner-highlight:
+      0 1px 0 inset oklch(100% 0 0 / 0.04),
+      0 0 0 1px inset oklch(100% 0 0 / 0.05);
+    --shadow-float:
+      0 12px 28px -10px oklch(0% 0 0 / 0.55),
+      0 2px 6px -2px oklch(0% 0 0 / 0.45);
+    --shadow-float-tall:
+      0 22px 44px -14px oklch(0% 0 0 / 0.62),
+      0 4px 10px -4px oklch(0% 0 0 / 0.5);
+
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-spring-soft: cubic-bezier(0.34, 1.2, 0.64, 1);
+    --ease-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+    --font-ui: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+
+    /* per-bubble inputs (overridden inline per state) */
+    --ctx: 0%;
+    --ring: var(--ink-2);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+
+  body {
+    background:
+      radial-gradient(1200px 700px at 22% 8%, oklch(20% 0.018 270) 0%, transparent 60%),
+      radial-gradient(900px 600px at 80% 92%, oklch(18% 0.022 195 / 0.4) 0%, transparent 55%),
+      var(--surface-0);
+    color: var(--ink-0);
+    font-family: var(--font-ui);
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: geometricPrecision;
+    overflow-x: hidden;
+  }
+
+  body.motion-paused *,
+  body.motion-paused *::before,
+  body.motion-paused *::after {
+    animation-play-state: paused !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+  /* ======================== layout ======================== */
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 48px 120px;
+  }
+
+  header.kicker {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 56px;
+  }
+  header.kicker h1 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.01em;
+  }
+  header.kicker .meta {
+    color: var(--ink-1);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  section.row {
+    margin-bottom: 56px;
+  }
+
+  section.row > h2 {
+    margin: 0 0 20px;
+    color: var(--ink-1);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 28px 24px;
+  }
+
+  .gallery.expanded {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  }
+
+  figure.card {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 36px 24px;
+    border-radius: 16px;
+    background: oklch(15% 0.012 270 / 0.55);
+    box-shadow:
+      0 0 0 1px var(--line),
+      var(--shadow-inner-highlight);
+  }
+
+  figure.card.center { align-items: center; }
+
+  figcaption {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--ink-1);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  figcaption .name {
+    color: var(--ink-0);
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+  }
+
+  /* ======================== bubble ======================== */
+
+  /* Wrapper that establishes the desktop bg under each bubble so depth shows */
+  .stage {
+    --stage-pad: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--stage-pad);
+    border-radius: 14px;
+    background:
+      radial-gradient(60% 80% at 50% 50%, oklch(11% 0.012 270) 0%, oklch(9% 0.012 270) 100%);
+  }
+
+  .island {
+    position: relative;
+    height: 42px;
+    border-radius: 999px;
+    background: var(--surface-1);
+    box-shadow: var(--shadow-inner-highlight), var(--shadow-float);
+    color: var(--ink-0);
+    font-family: var(--font-ui);
+    transition:
+      width 380ms var(--ease-spring-soft),
+      height 380ms var(--ease-spring-soft),
+      border-radius 280ms var(--ease-standard),
+      box-shadow 280ms var(--ease-standard),
+      background 280ms var(--ease-standard);
+    overflow: visible;
+  }
+
+  .island.compact-rest { width: 124px; }
+  .island.compact-hover { width: 202px; }
+
+  .island-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    padding: 0 8px;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
+  /* status orb */
+  .orb {
+    flex: 0 0 auto;
+    position: relative;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background:
+      conic-gradient(var(--ring) calc(var(--ctx) * 3.6deg), oklch(40% 0 0 / 0.18) 0deg);
+    padding: 2px;
+    display: grid;
+    place-items: center;
+    box-shadow: var(--shadow-inner-highlight);
+  }
+  .orb::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    background: oklch(11% 0.01 270);
+  }
+  .orb .glyph {
+    position: relative;
+    font-size: 16px;
+    line-height: 1;
+    transform-origin: center;
+  }
+
+  .copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .copy .label {
+    font-weight: 600;
+    font-size: 12.5px;
+    letter-spacing: 0.01em;
+    color: var(--ink-0);
+    white-space: nowrap;
+  }
+  .copy .ctx {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-1);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 0;
+    height: 0;
+    overflow: hidden;
+    transition: opacity 220ms var(--ease-decel);
+  }
+  .island.compact-hover .copy .ctx,
+  .island.expanded .copy .ctx {
+    opacity: 1;
+    height: auto;
+  }
+
+  /* hover controls strip */
+  .controls {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--surface-glass);
+    backdrop-filter: blur(8px);
+    transform: translate(8px, -50%);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 220ms var(--ease-decel),
+      transform 280ms var(--ease-decel);
+  }
+  .island.compact-hover .controls {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+  .controls button {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink-1);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 160ms var(--ease-standard), color 160ms var(--ease-standard);
+  }
+  .controls button:hover {
+    background: oklch(100% 0 0 / 0.06);
+    color: var(--ink-0);
+  }
+
+  /* ======================== expanded panel ======================== */
+
+  .island.expanded {
+    width: 360px;
+    border-radius: 18px;
+    box-shadow: var(--shadow-inner-highlight), var(--shadow-float-tall);
+  }
+  .island.expanded.approval { height: 238px; }
+  .island.expanded.question { height: 300px; }
+
+  .island.expanded .island-row {
+    align-items: flex-start;
+    height: 54px;
+    padding: 0 14px;
+    border-radius: 0;
+  }
+
+  .panel {
+    padding: 0 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel .head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .eyebrow {
+    color: var(--ink-1);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+  .heading {
+    margin: 2px 0 0;
+    color: var(--ink-0);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.005em;
+    text-wrap: pretty;
+  }
+
+  .pill {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--ring);
+    color: var(--ring);
+    background: transparent;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+
+  .command {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--ink-0);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: var(--shadow-inner-highlight);
+    overflow-wrap: anywhere;
+  }
+
+  dl.meta {
+    margin: 0;
+    display: grid;
+    gap: 6px;
+  }
+  dl.meta > div {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 10px;
+  }
+  dl.meta dt {
+    color: var(--ink-1);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  dl.meta dd {
+    margin: 0;
+    color: var(--ink-0);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .actions.full { grid-template-columns: 1fr; }
+  .actions.three {
+    grid-template-areas: "allow allow" "approve deny";
+    gap: 8px;
+  }
+  .actions.three .btn-allow { grid-area: allow; }
+  .actions.three .btn-approve { grid-area: approve; }
+  .actions.three .btn-deny { grid-area: deny; }
+
+  .btn {
+    height: 36px;
+    border: 0;
+    border-radius: 12px;
+    color: var(--ink-0);
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 12.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    box-shadow: var(--shadow-inner-highlight);
+    transition:
+      background 180ms var(--ease-standard),
+      color 180ms var(--ease-standard),
+      transform 180ms var(--ease-standard),
+      box-shadow 180ms var(--ease-standard);
+  }
+  .btn:hover { transform: translateY(-1px); }
+
+  .btn-approve {
+    background: oklch(22% 0.025 150);
+    color: var(--accent-sage);
+  }
+  .btn-approve:hover {
+    background: oklch(26% 0.030 150);
+    color: oklch(80% 0.06 150);
+  }
+  .btn-deny {
+    background: oklch(22% 0.025 25);
+    color: var(--accent-rose);
+  }
+  .btn-deny:hover {
+    background: oklch(26% 0.030 25);
+    color: oklch(78% 0.07 25);
+  }
+  .btn-allow {
+    background: oklch(22% 0.025 70);
+    color: var(--accent-warm);
+    height: 32px;
+    font-size: 12px;
+  }
+  .btn-allow:hover {
+    background: oklch(26% 0.030 70);
+    color: oklch(85% 0.10 70);
+  }
+
+  /* answer form (question state) */
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .options button {
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: oklch(20% 0.014 270);
+    color: var(--ink-0);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 160ms var(--ease-standard);
+  }
+  .options button:hover { background: oklch(24% 0.016 270); }
+  .options button.selected {
+    background: oklch(28% 0.030 195);
+    color: var(--ink-0);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  input.text {
+    height: 34px;
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 12px;
+    background: oklch(15% 0.012 270);
+    color: var(--ink-0);
+    font: inherit;
+    font-size: 12px;
+  }
+  input.text::placeholder { color: var(--ink-2); }
+
+  /* ======================== peek slit ======================== */
+
+  .stage.peek {
+    --stage-pad: 0;
+    height: 84px;
+    background:
+      linear-gradient(90deg, oklch(11% 0.012 270) 0%, oklch(11% 0.012 270) calc(100% - 12px), oklch(15% 0.014 270) calc(100% - 12px), oklch(20% 0.018 195) 100%);
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 0;
+  }
+  .peek-slit {
+    width: 12px;
+    height: 42px;
+    border-radius: 6px 0 0 6px;
+    background: var(--surface-1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-inner-highlight);
+  }
+  .peek-slit::before {
+    content: "";
+    position: absolute;
+    inset: 7px 3px;
+    border-radius: 999px;
+    background: oklch(40% 0 0 / 0.18);
+  }
+  .peek-slit::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    bottom: 7px;
+    height: var(--ctx);
+    border-radius: 999px;
+    background: var(--ring);
+    box-shadow: 0 0 8px color-mix(in oklch, var(--ring), transparent 50%);
+    transition: height 280ms var(--ease-standard), background 280ms var(--ease-standard);
+  }
+
+  /* ======================== animations ======================== */
+
+  /* per-status emoji + ring behaviors */
+  [data-status="idle"] .glyph {
+    animation: breathe 5.5s ease-in-out infinite;
+  }
+  [data-status="thinking"] .orb {
+    animation: thinkPulse 2.4s ease-in-out infinite;
+  }
+  [data-status="thinking"] .glyph {
+    animation: breathe 4.2s ease-in-out infinite;
+  }
+  [data-status="running_tool"] .orb {
+    animation: runRotate 2s linear infinite;
+  }
+  [data-status="running_tool"] .glyph {
+    /* counter-rotate the emoji so it stays upright while ring rotates */
+    animation: runRotateBack 2s linear infinite;
+  }
+  [data-status="waiting_approval"] .orb {
+    animation: attentionPulse 1.6s ease-in-out infinite;
+  }
+  [data-status="waiting_approval"] .glyph {
+    animation: emojiNudge 1.6s ease-in-out infinite;
+  }
+  [data-status="waiting_answer"] .orb,
+  [data-status="waiting"] .orb {
+    animation: attentionPulse 2.0s ease-in-out infinite;
+  }
+  [data-status="failed"] .orb,
+  [data-status="blocked"] .orb {
+    animation: errorBreath 2.4s ease-in-out infinite;
+  }
+  [data-status="done"] .glyph {
+    animation: doneBob 2.6s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.06); opacity: 1; }
+  }
+  @keyframes thinkPulse {
+    0%, 100% {
+      box-shadow:
+        var(--shadow-inner-highlight),
+        0 0 0 0 color-mix(in oklch, var(--accent), transparent 80%);
+    }
+    50% {
+      box-shadow:
+        var(--shadow-inner-highlight),
+        0 0 0 4px color-mix(in oklch, var(--accent), transparent 88%);
+    }
+  }
+  @keyframes runRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes runRotateBack {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+  }
+  @keyframes attentionPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+  @keyframes emojiNudge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  @keyframes errorBreath {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-1px); }
+    75% { transform: translateX(1px); }
+  }
+  @keyframes doneBob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1.5px); }
+  }
+
+  /* done celebration */
+  .island.celebrate {
+    animation: celebrateLift 380ms var(--ease-spring-soft);
+  }
+  .island.celebrate::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      105deg,
+      transparent 25%,
+      color-mix(in oklch, var(--accent-sage), transparent 82%) 48%,
+      color-mix(in oklch, var(--accent-warm), transparent 86%) 56%,
+      transparent 75%
+    );
+    transform: translateX(-120%);
+    animation: doneSweep 1.4s ease-out;
+  }
+  .island.celebrate .copy .label {
+    color: var(--accent-sage);
+    text-shadow: 0 0 10px color-mix(in oklch, var(--accent-sage), transparent 65%);
+  }
+
+  @keyframes celebrateLift {
+    from { transform: translateY(2px); opacity: 0.92; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes doneSweep {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
+  }
+
+  /* peek slit pulses while done attention is unacknowledged */
+  .stage.peek.attention .peek-slit {
+    animation: peekPulse 1.35s ease-in-out infinite;
+  }
+  @keyframes peekPulse {
+    0%, 100% { box-shadow: var(--shadow-inner-highlight), 0 0 0 0 color-mix(in oklch, var(--accent-sage), transparent 80%); }
+    50% { box-shadow: var(--shadow-inner-highlight), 0 0 0 4px color-mix(in oklch, var(--accent-sage), transparent 70%); }
+  }
+
+  /* ======================== tweaks ======================== */
+
+  .tweaks {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: 260px;
+    padding: 16px;
+    background: var(--surface-1);
+    border-radius: 14px;
+    box-shadow: var(--shadow-inner-highlight), var(--shadow-float-tall);
+    color: var(--ink-0);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    z-index: 50;
+    transition: transform 280ms var(--ease-spring-soft), opacity 220ms var(--ease-standard);
+  }
+  .tweaks.collapsed {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tweaks .title {
+    margin: 0 0 12px;
+    color: var(--ink-1);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .tweaks .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .tweaks .row:last-child { margin-bottom: 0; }
+  .tweaks label { color: var(--ink-1); font-size: 11.5px; }
+  .tweaks button.toggle, .tweaks select {
+    height: 28px;
+    border: 0;
+    border-radius: 8px;
+    padding: 0 10px;
+    background: var(--surface-2);
+    color: var(--ink-0);
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .tweaks button.replay {
+    width: 100%;
+    height: 32px;
+    border-radius: 10px;
+    background: oklch(22% 0.025 150);
+    color: var(--accent-sage);
+    border: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-inner-highlight);
+  }
+  .tweaks button.replay:hover { background: oklch(26% 0.030 150); }
+
+  .fab-tweaks {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--surface-1);
+    color: var(--ink-0);
+    box-shadow: var(--shadow-inner-highlight), var(--shadow-float);
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 49;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="kicker">
+    <h1>Companion · v0 design preview</h1>
+    <span class="meta">desktop bubble — all states</span>
+  </header>
+
+  <section class="row">
+    <h2>Compact rest · 124 × 42</h2>
+    <div class="gallery">
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="idle" style="--ctx: 0%; --ring: var(--ink-2);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">💤</span></div>
+              <div class="copy"><span class="label">Idle</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">idle</span>
+          <span>ring → ink-2 · breathe 5.5s</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="thinking" style="--ctx: 12%; --ring: var(--accent);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">🤔</span></div>
+              <div class="copy"><span class="label">Thinking</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">thinking</span>
+          <span>ring → titanium-teal · pulse 2.4s</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="running_tool" style="--ctx: 27%; --ring: var(--accent-slate);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">⚙️</span></div>
+              <div class="copy"><span class="label">Running</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">running_tool</span>
+          <span>ring → dusk-slate · rotate 2s linear</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="waiting_approval" style="--ctx: 42%; --ring: var(--accent-warm-hi);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">🟡</span></div>
+              <div class="copy"><span class="label">Approval</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">waiting_approval</span>
+          <span>ring → warm-hi · attention-pulse 1.6s</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="done" style="--ctx: 64%; --ring: var(--accent-sage);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">✅</span></div>
+              <div class="copy"><span class="label">Done</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">done</span>
+          <span>ring → sage · bob 2.6s</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-rest" data-status="failed" style="--ctx: 31%; --ring: var(--accent-rose);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">⚠️</span></div>
+              <div class="copy"><span class="label">Failed</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">failed</span>
+          <span>ring → dusty-rose · subtle breath</span>
+        </figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <section class="row">
+    <h2>Compact hover · 202 × 42</h2>
+    <div class="gallery">
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-hover" data-status="thinking" style="--ctx: 12%; --ring: var(--accent);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">🤔</span></div>
+              <div class="copy">
+                <span class="label">Thinking</span>
+                <span class="ctx">24.3k / 1m</span>
+              </div>
+              <div class="controls">
+                <button title="settings">⚙</button>
+                <button title="expand">▢</button>
+                <button title="minimize">−</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">compact-hover</span>
+          <span>ctx label fades in · controls slide-decel 280ms</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div class="island compact-hover" data-status="running_tool" style="--ctx: 27%; --ring: var(--accent-slate);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">⚙️</span></div>
+              <div class="copy">
+                <span class="label">Running</span>
+                <span class="ctx">54.0k / 1m</span>
+              </div>
+              <div class="controls">
+                <button title="settings">⚙</button>
+                <button title="expand">▢</button>
+                <button title="minimize">−</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">compact-hover · running</span>
+          <span>controls share surface-glass strip</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="row">
+    <h2>Expanded · approval / question</h2>
+    <div class="gallery expanded">
+
+      <figure class="card center">
+        <div class="stage">
+          <div class="island expanded approval" data-status="waiting_approval" style="--ctx: 42%; --ring: var(--accent-warm-hi);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">🟡</span></div>
+              <div class="copy">
+                <span class="label">Approval</span>
+                <span class="ctx">84.0k / 1m · opus 4.7</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="head">
+                <div>
+                  <div class="eyebrow">approval</div>
+                  <h3 class="heading">PowerShell</h3>
+                </div>
+                <span class="pill" style="--ring: var(--accent-warm);">medium</span>
+              </div>
+              <div class="command">git push origin main --tags</div>
+              <dl class="meta">
+                <div><dt>cwd</dt><dd>D:\Imperial\individual\claude-code-companion</dd></div>
+                <div><dt>reason</dt><dd>writes to remote default branch</dd></div>
+              </dl>
+              <div class="actions three">
+                <button class="btn btn-allow">Always allow</button>
+                <button class="btn btn-approve">Approve</button>
+                <button class="btn btn-deny">Deny</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">expanded · approval</span>
+          <span>radius 18 · shadow-float-tall · outline pill</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card center">
+        <div class="stage">
+          <div class="island expanded question" data-status="waiting_answer" style="--ctx: 56%; --ring: var(--accent-warm);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">❓</span></div>
+              <div class="copy">
+                <span class="label">Question</span>
+                <span class="ctx">112k / 1m · opus 4.7</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="head">
+                <div>
+                  <div class="eyebrow">question</div>
+                  <h3 class="heading">Pick a frontend stack</h3>
+                </div>
+                <span class="pill" style="--ring: var(--accent);">low</span>
+              </div>
+              <div class="options">
+                <button>SwiftUI</button>
+                <button class="selected">React Native</button>
+                <button>Flutter</button>
+                <button>Native iOS</button>
+              </div>
+              <input class="text" placeholder="Other answer">
+              <div class="actions full">
+                <button class="btn btn-approve">Submit answer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">expanded · question</span>
+          <span>option pills sage-on-surface-2 when selected</span>
+        </figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <section class="row">
+    <h2>Edge peek · done celebration</h2>
+    <div class="gallery">
+
+      <figure class="card">
+        <div class="stage peek">
+          <div class="peek-slit" style="--ctx: 45%; --ring: var(--accent);"></div>
+        </div>
+        <figcaption>
+          <span class="name">peek slit · 12 px</span>
+          <span>ctx fill = ring color · drag to detach</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage peek attention">
+          <div class="peek-slit" style="--ctx: 88%; --ring: var(--accent-sage);"></div>
+        </div>
+        <figcaption>
+          <span class="name">peek slit · done unacknowledged</span>
+          <span>1.35s sage glow until pointer enters</span>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="stage">
+          <div id="celebrateBubble" class="island compact-rest" data-status="done" style="--ctx: 88%; --ring: var(--accent-sage);">
+            <div class="island-row">
+              <div class="orb"><span class="glyph">✅</span></div>
+              <div class="copy"><span class="label">Done</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>
+          <span class="name">done celebration</span>
+          <span>sage → warm sweep · 1.4s ease-out · click replay</span>
+        </figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+</div>
+
+<button class="fab-tweaks" id="fabTweaks" aria-label="Open tweaks">⌥</button>
+<aside class="tweaks collapsed" id="tweaks">
+  <h3 class="title">Tweaks</h3>
+  <div class="row">
+    <label for="motion">Motion</label>
+    <button class="toggle" id="motion">running</button>
+  </div>
+  <div class="row">
+    <label for="primary">Primary accent</label>
+    <select id="primary">
+      <option value="195">titanium-teal</option>
+      <option value="150">sage</option>
+      <option value="250">slate</option>
+      <option value="70">sand-gold</option>
+    </select>
+  </div>
+  <div class="row">
+    <button class="replay" id="replay">Replay done celebration</button>
+  </div>
+</aside>
+
+<script>
+  const fab = document.getElementById('fabTweaks');
+  const tweaks = document.getElementById('tweaks');
+  const motionBtn = document.getElementById('motion');
+  const primary = document.getElementById('primary');
+  const replay = document.getElementById('replay');
+  const celebrate = document.getElementById('celebrateBubble');
+
+  fab.addEventListener('click', () => {
+    tweaks.classList.toggle('collapsed');
+  });
+
+  motionBtn.addEventListener('click', () => {
+    document.body.classList.toggle('motion-paused');
+    motionBtn.textContent = document.body.classList.contains('motion-paused') ? 'paused' : 'running';
+  });
+
+  primary.addEventListener('change', () => {
+    const hue = primary.value;
+    document.documentElement.style.setProperty('--accent', `oklch(72% 0.06 ${hue})`);
+  });
+
+  function fireCelebrate() {
+    celebrate.classList.remove('celebrate');
+    // force reflow
+    void celebrate.offsetWidth;
+    celebrate.classList.add('celebrate');
+    setTimeout(() => celebrate.classList.remove('celebrate'), 1500);
+  }
+  replay.addEventListener('click', fireCelebrate);
+  // first run
+  setTimeout(fireCelebrate, 600);
+  // loop every ~6s for inspection
+  setInterval(fireCelebrate, 6000);
+</script>
+
+</body>
+</html>

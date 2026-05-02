@@ -12,6 +12,8 @@
     "deny": "node scripts/decide.js deny",
     "answer": "node scripts/decide.js answer",
     "setup-hooks": "node scripts/setup-hooks.js",
+    "setup-user-hooks": "node scripts/setup-user-hooks.js",
+    "doctor": "node scripts/doctor.js",
     "desktop": "electron packages/desktop/main.js",
     "smoke": "node scripts/smoke-test.js"
   },

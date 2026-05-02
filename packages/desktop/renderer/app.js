@@ -52,13 +52,14 @@ const els = {
   answerForm: document.getElementById("answerForm"),
   approvalActions: document.getElementById("approvalActions"),
   approveRequest: document.getElementById("approveRequest"),
-  alwaysAllowRequest: document.getElementById("alwaysAllowRequest"),
+  suggestionList: document.getElementById("suggestionList"),
   denyRequest: document.getElementById("denyRequest"),
   refreshNow: document.getElementById("refreshNow"),
   openDashboard: document.getElementById("openDashboard"),
   maximizeWindow: document.getElementById("maximizeWindow"),
   minimizeWindow: document.getElementById("minimizeWindow"),
-  closeWindow: document.getElementById("closeWindow")
+  closeWindow: document.getElementById("closeWindow"),
+  toggleEnabled: document.getElementById("toggleEnabled")
 };
 
 function latestSession() {
@@ -127,13 +128,14 @@ function contextUsageFrom(subject) {
 }
 
 function colorForContext(percent) {
+  // Tokens kept in sync with docs/design-language.md.
   if (percent >= 85) {
-    return "#ff6b6b";
+    return "oklch(70% 0.07 25)"; // dusty rose — alarm
   }
   if (percent >= 65) {
-    return "#ffd166";
+    return "oklch(78% 0.08 70)"; // sand gold — caution
   }
-  return "#42d392";
+  return "oklch(72% 0.06 195)"; // titanium teal — calm
 }
 
 function renderContext(contextUsage) {
@@ -239,11 +241,7 @@ function renderRequest() {
   els.requestReason.textContent = request.reason || "";
   els.answerForm.hidden = !question;
   els.approvalActions.hidden = question;
-  els.alwaysAllowRequest.hidden = !(
-    request.approvalKind === "permission_request" &&
-    Array.isArray(request.permissionSuggestions) &&
-    request.permissionSuggestions.length
-  );
+  renderSuggestionList(request);
 
   if (question) {
     renderAnswerForm(request);
@@ -252,6 +250,53 @@ function renderRequest() {
     els.answerForm.replaceChildren();
     setMode("approval");
   }
+}
+
+function suggestionLabel(suggestion) {
+  if (!suggestion) {
+    return "Always allow";
+  }
+  const rules = Array.isArray(suggestion.rules) ? suggestion.rules : [];
+  if (!rules.length) {
+    return "Always allow this";
+  }
+  const parts = rules.map((rule) => {
+    const tool = rule && (rule.toolName || rule.tool) ? String(rule.toolName || rule.tool) : "";
+    const content = rule && (rule.ruleContent || rule.scope || rule.path)
+      ? String(rule.ruleContent || rule.scope || rule.path)
+      : "";
+    if (tool && content) return `${tool} ${content}`;
+    return tool || content;
+  }).filter(Boolean);
+  return parts.length ? `Always allow ${parts.join(", ")}` : "Always allow this";
+}
+
+function renderSuggestionList(request) {
+  if (!els.suggestionList) {
+    return;
+  }
+  els.suggestionList.replaceChildren();
+
+  const suggestions = request.approvalKind === "permission_request" && Array.isArray(request.permissionSuggestions)
+    ? request.permissionSuggestions
+    : [];
+
+  suggestions.forEach((suggestion, index) => {
+    if (!suggestion || suggestion.behavior !== "allow") {
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "allow";
+    button.textContent = suggestionLabel(suggestion);
+    button.addEventListener("click", () => {
+      const requestId = currentRequestId();
+      if (requestId) {
+        decide(requestId, "always_allow", "Always allow from desktop companion", { suggestionIndex: index });
+      }
+    });
+    els.suggestionList.append(button);
+  });
 }
 
 function renderAnswerForm(request) {
@@ -437,13 +482,6 @@ els.approveRequest.addEventListener("click", () => {
   }
 });
 
-els.alwaysAllowRequest.addEventListener("click", () => {
-  const requestId = currentRequestId();
-  if (requestId) {
-    decide(requestId, "always_allow", "Always allow from desktop companion");
-  }
-});
-
 els.denyRequest.addEventListener("click", () => {
   const requestId = currentRequestId();
   if (!requestId) {
@@ -466,6 +504,35 @@ if (els.minimizeWindow) {
 }
 if (els.closeWindow) {
   els.closeWindow.addEventListener("click", () => window.companionDesktop.close());
+}
+
+function applyEnabledState(enabled) {
+  if (enabled) {
+    delete document.body.dataset.companionDisabled;
+    if (els.toggleEnabled) {
+      els.toggleEnabled.title = "Disable Companion approvals (fall back to terminal)";
+      els.toggleEnabled.setAttribute("aria-pressed", "false");
+    }
+  } else {
+    document.body.dataset.companionDisabled = "true";
+    if (els.toggleEnabled) {
+      els.toggleEnabled.title = "Enable Companion approvals";
+      els.toggleEnabled.setAttribute("aria-pressed", "true");
+    }
+  }
+}
+
+if (els.toggleEnabled && window.companionDesktop.getEnabled) {
+  window.companionDesktop.getEnabled().then(applyEnabledState);
+  els.toggleEnabled.addEventListener("click", async () => {
+    const next = document.body.dataset.companionDisabled === "true";
+    const result = await window.companionDesktop.setEnabled(next);
+    applyEnabledState(result);
+  });
+}
+
+if (window.companionDesktop.onEnabledChanged) {
+  window.companionDesktop.onEnabledChanged(applyEnabledState);
 }
 
 window.companionDesktop.onModeChanged((mode) => {
@@ -536,7 +603,31 @@ document.body.addEventListener("pointerenter", () => {
   }, HOVER_TO_EXPAND_MS);
 });
 
-document.body.addEventListener("pointermove", acknowledgeAttentionFromPointer);
+document.body.addEventListener("pointermove", () => {
+  acknowledgeAttentionFromPointer();
+
+  // When the bubble peeks past a screen edge, the window slides out from
+  // under the cursor without dispatching pointerleave/enter — so a later
+  // hover never re-fires pointerenter and the slit feels dead. pointermove
+  // always fires on cursor movement, so it's the reliable hover signal here.
+  if (state.mode !== "compact") {
+    return;
+  }
+  if (document.body.dataset.peeking !== "true") {
+    return;
+  }
+  if (peekLeaveTimer) {
+    clearTimeout(peekLeaveTimer);
+    peekLeaveTimer = null;
+  }
+  if (peekHoverTimer) {
+    return;
+  }
+  peekHoverTimer = setTimeout(() => {
+    peekHoverTimer = null;
+    window.companionDesktop.peekHover();
+  }, HOVER_TO_EXPAND_MS);
+});
 
 document.body.addEventListener("pointerleave", () => {
   if (state.mode !== "compact") {

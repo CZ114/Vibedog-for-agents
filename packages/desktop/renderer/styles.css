@@ -1,17 +1,74 @@
+/* Companion desktop bubble — see docs/design-language.md for tokens / motion. */
+
+/* Registered custom properties — let JS-driven ring fill animate smoothly
+   instead of jumping when the ctx percentage updates. */
+@property --context-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+
+@property --context-percent {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+
 :root {
   color-scheme: dark;
-  --bg: rgba(16, 16, 16, 0.95);
-  --bg-strong: rgba(10, 10, 10, 0.98);
-  --line: rgba(255, 255, 255, 0.13);
-  --text: #f7f7f7;
-  --muted: #a9a9a9;
-  --ok: #42d392;
-  --warn: #ffd166;
-  --bad: #ff6b6b;
-  --info: #7cb7ff;
-  --context-color: var(--ok);
+
+  /* surfaces */
+  --surface-0: oklch(13% 0.012 270);
+  --surface-1: oklch(17% 0.014 270 / 0.96);
+  --surface-2: oklch(22% 0.016 270);
+  --surface-glass: oklch(20% 0.014 270 / 0.86);
+
+  /* ink */
+  --ink-0: oklch(95% 0.014 80);
+  --ink-1: oklch(70% 0.012 250);
+  --ink-2: oklch(50% 0.010 250);
+  --line: oklch(60% 0 0 / 0.10);
+
+  /* semantic accents */
+  --accent: oklch(72% 0.06 195);
+  --accent-slate: oklch(60% 0.03 250);
+  --accent-warm: oklch(78% 0.08 70);
+  --accent-warm-hi: oklch(82% 0.10 70);
+  --accent-sage: oklch(72% 0.06 150);
+  --accent-rose: oklch(70% 0.07 25);
+
+  /* depth */
+  --shadow-inner-highlight:
+    0 1px 0 inset oklch(100% 0 0 / 0.04),
+    0 0 0 1px inset oklch(100% 0 0 / 0.05);
+  /* Sized to fit inside the 12px gutter around the capsule so the soft
+     halo doesn't get clipped at the BrowserWindow boundary. */
+  --shadow-float:
+    0 6px 14px -4px oklch(0% 0 0 / 0.55),
+    0 2px 4px -1px oklch(0% 0 0 / 0.40);
+  --shadow-float-tall:
+    0 10px 22px -6px oklch(0% 0 0 / 0.60),
+    0 3px 7px -2px oklch(0% 0 0 / 0.45);
+
+  /* motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring-soft: cubic-bezier(0.34, 1.2, 0.64, 1);
+  --ease-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+  /* fonts */
+  --font-ui: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+
+  /* set by app.js */
+  --context-color: var(--accent);
   --context-angle: 0deg;
   --context-percent: 0%;
+
+  /* Ring + slit fill transition — registered properties make this smooth. */
+  transition:
+    --context-angle 720ms var(--ease-standard),
+    --context-percent 720ms var(--ease-standard),
+    --context-color 320ms var(--ease-standard);
 }
 
 * {
@@ -25,53 +82,68 @@ body {
   margin: 0;
   overflow: hidden;
   background: transparent;
-  color: var(--text);
-  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: 0;
+  color: var(--ink-0);
+  font-family: var(--font-ui);
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.005em;
 }
 
 button {
   border: 0;
-  border-radius: 999px;
-  color: var(--text);
+  color: var(--ink-0);
   font: inherit;
-  font-weight: 800;
   cursor: pointer;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+/* ============================================================
+   Island — capsule that animates to expanded card
+   ============================================================ */
+
+/* BUBBLE_PADDING (12px in main.js) is the transparent gutter around the
+   capsule where the soft drop shadow renders. Win11 won't draw anything
+   in there because the BrowserWindow opts out of thickFrame / mica /
+   roundedCorners — so the gutter is invisible except for the shadow. */
 .island {
   position: relative;
-  width: calc(100% - 8px);
-  height: calc(100% - 8px);
-  margin: 4px;
+  width: calc(100% - 24px);
+  height: calc(100% - 24px);
+  margin: 12px;
   overflow: hidden;
-  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--bg);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-inner-highlight), var(--shadow-float);
   transition:
-    border-radius 190ms cubic-bezier(0.2, 0.9, 0.2, 1),
-    background 190ms ease,
-    box-shadow 190ms ease;
+    border-radius 320ms var(--ease-standard),
+    background 320ms var(--ease-standard),
+    box-shadow 320ms var(--ease-standard);
 }
 
 body:not([data-mode="compact"]) .island {
-  border-radius: 28px;
-  background: var(--bg-strong);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.48);
+  border-radius: 18px;
+  box-shadow: var(--shadow-inner-highlight), var(--shadow-float-tall);
 }
 
-/* When the island is peeking past a screen edge, dim the side that is hidden
-   by the screen bezel so the visible strip reads as a "tab" instead of a
-   half-clipped bubble. The visible portion stays bright so the user sees the
-   status / context-bar cue. */
 body[data-peeking="true"] .island {
-  background: var(--bg-strong);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
-  opacity: 0.92;
+  box-shadow: var(--shadow-inner-highlight), var(--shadow-float);
+  opacity: 0.96;
 }
+
+/* ============================================================
+   Peek slit
+   ============================================================ */
 
 .peek-context {
   display: none;
@@ -79,7 +151,7 @@ body[data-peeking="true"] .island {
   z-index: 4;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: oklch(40% 0 0 / 0.18);
   pointer-events: auto;
   -webkit-app-region: drag;
   app-region: drag;
@@ -89,23 +161,26 @@ body[data-peeking="true"] .island {
   position: absolute;
   border-radius: inherit;
   background: var(--context-color);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--context-color), transparent 45%);
-  transition:
-    width 180ms ease,
-    height 180ms ease,
-    background 180ms ease;
+  box-shadow: 0 0 8px color-mix(in oklch, var(--context-color), transparent 50%);
 }
 
 body[data-peeking="true"] .peek-context {
   display: block;
 }
 
+/* The slit's own glow when a done session is unacknowledged. Background +
+   box-shadow aren't clipped by .peek-context's overflow: hidden, so the
+   sage tint reads even though the slit is only 4 px wide. Pulse is brisk
+   and large-amplitude so it stays catchable in peripheral vision while
+   the bubble is tucked. */
 body[data-peeking="true"][data-attention="done"] .island[data-status="done"] .peek-context {
-  animation: doneSlitPulse 1.35s ease-in-out infinite;
+  background: color-mix(in oklch, var(--accent-sage), transparent 55%);
+  animation: peekDoneGlow 1.2s ease-in-out infinite;
 }
 
 body[data-peeking="true"][data-attention="done"] .island[data-status="done"] .peek-context-fill {
-  animation: doneSlitFill 1.35s ease-in-out infinite;
+  background: var(--accent-sage);
+  animation: peekDoneFill 1.2s ease-in-out infinite;
 }
 
 body[data-peeking="true"] .status-bar,
@@ -157,25 +232,33 @@ body:not([data-snap-horizontal]) .peek-context-fill {
   width: var(--context-percent);
 }
 
+/* ============================================================
+   Status bar (compact + expanded header)
+   ============================================================ */
+
 .status-bar {
   position: relative;
   display: flex;
   align-items: center;
-  height: 34px;
-  padding: 0 7px;
+  /* In compact mode the status bar fills the whole capsule vertically so
+     the orb sits centered with breathing room above and below — no dead
+     "tail" of bubble below the row. Expanded modes stack a fixed-height
+     header over the request panel, so the height switches to 54px. */
+  height: 100%;
+  padding: 0 9px;
   transition: opacity 130ms ease;
 }
 
 body:not([data-mode="compact"]) .status-bar {
   height: 54px;
-  padding: 0 13px;
+  padding: 0 16px;
 }
 
 .drag-region {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   min-width: 0;
   width: 100%;
   height: 100%;
@@ -185,155 +268,123 @@ body:not([data-mode="compact"]) .status-bar {
   app-region: drag;
 }
 
+/* Status orb — slightly smaller in compact so the bubble feels svelter
+   and the text gets visual room. Conic ring + dark inner well + halo. */
 .status-orb {
   display: inline-grid;
+  position: relative;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  padding: 2px;
-  background:
-    conic-gradient(var(--context-color) var(--context-angle), rgba(255, 255, 255, 0.14) 0deg),
-    rgba(255, 255, 255, 0.08);
+  padding: 1.5px;
+  background: conic-gradient(
+    var(--context-color) var(--context-angle),
+    oklch(40% 0 0 / 0.18) 0deg
+  );
+  box-shadow: var(--shadow-inner-highlight);
+  transform-origin: center;
 }
 
 body:not([data-mode="compact"]) .status-orb {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  padding: 2px;
+}
+
+.status-orb::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--context-color), transparent 50%),
+    transparent 72%
+  );
+  opacity: 0;
+  pointer-events: none;
 }
 
 .status-emoji {
   display: inline-grid;
+  position: relative;
   place-items: center;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: #111;
-  font-size: 16px;
+  background: oklch(11% 0.01 270);
+  font-size: 13.5px;
   line-height: 1;
+  transform-origin: center;
+  z-index: 1;
+}
+
+body:not([data-mode="compact"]) .status-emoji {
+  font-size: 15.5px;
 }
 
 .status-copy {
-  position: relative;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 180px;
-  gap: 0;
-  padding-bottom: 0;
-  opacity: 1;
-  transform: translateX(0);
-  transition:
-    max-width 170ms cubic-bezier(0.2, 0.9, 0.2, 1),
-    opacity 120ms ease,
-    transform 170ms cubic-bezier(0.2, 0.9, 0.2, 1);
-}
-
-body[data-mode="compact"] .status-copy {
-  max-width: 74px;
-  opacity: 1;
-  transform: translateX(0);
-}
-
-body[data-mode="compact"] .island:hover .status-copy {
-  max-width: 88px;
-  opacity: 1;
-  transform: translateX(0);
-}
-
-body:not([data-mode="compact"]) .status-copy {
-  gap: 3px;
-  padding-bottom: 0;
+  gap: 1px;
 }
 
 .status-line {
   display: flex;
   align-items: baseline;
-  gap: 8px;
   min-width: 0;
 }
 
 .status-text {
   flex: 0 0 auto;
   overflow: visible;
-  font-size: 12px;
-  font-weight: 850;
+  color: var(--ink-0);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.005em;
   white-space: nowrap;
+  transition: color 240ms var(--ease-standard);
 }
 
-.context-label {
-  flex: 0 1 auto;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-body[data-mode="compact"] .context-label {
-  display: none;
-}
-
-.status-detail {
-  display: none;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-body:not([data-mode="compact"]) .status-detail {
-  display: block;
-}
-
+/* No numbers anywhere — ring is the single context signal. */
+.context-label,
+.status-detail,
 .context-meter {
-  display: none;
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  display: none !important;
 }
 
-.context-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--context-color);
-  transition: width 180ms ease;
-}
+/* ============================================================
+   Hover-reveal window controls
+   ============================================================ */
 
 .window-actions {
   position: absolute;
   top: 50%;
-  right: 5px;
+  right: 7px;
   display: flex;
-  gap: 2px;
-  padding: 2px;
+  align-items: center;
+  gap: 3px;
+  padding: 2.5px;
   border-radius: 999px;
-  background:
-    linear-gradient(90deg, rgba(16, 16, 16, 0), rgba(16, 16, 16, 0.96) 12px),
-    rgba(16, 16, 16, 0.78);
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
   opacity: 0;
   pointer-events: none;
-  transform: translate(5px, -50%) scale(0.96);
+  transform: translate(8px, -50%);
   transition:
-    opacity 140ms ease,
-    transform 160ms cubic-bezier(0.2, 0.9, 0.2, 1);
+    opacity 240ms var(--ease-decel),
+    transform 320ms var(--ease-decel);
 }
 
 .island:hover .window-actions {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(0, -50%) scale(1);
+  transform: translate(0, -50%);
 }
 
 body[data-peeking="true"] .window-actions {
@@ -342,51 +393,79 @@ body[data-peeking="true"] .window-actions {
 }
 
 .window-actions button {
-  width: 22px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.09);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-1);
+  font-size: 11px;
   line-height: 1;
   transition:
-    background 120ms ease,
-    transform 120ms ease;
+    background 200ms var(--ease-standard),
+    color 200ms var(--ease-standard);
 }
 
 .window-actions button:hover {
-  background: rgba(255, 255, 255, 0.16);
-  transform: translateY(-1px);
+  background: oklch(100% 0 0 / 0.07);
+  color: var(--ink-0);
 }
+
+/* Toggle button — sand-gold tint when Companion is disabled, so the off
+   state is unmistakable next to the other controls. */
+.window-actions button#toggleEnabled[aria-pressed="true"] {
+  background: oklch(28% 0.040 70);
+  color: var(--accent-warm);
+}
+
+.window-actions button#toggleEnabled[aria-pressed="true"]:hover {
+  background: oklch(32% 0.045 70);
+  color: oklch(85% 0.10 70);
+}
+
+/* Whole-bubble disabled cue — slight ring desaturation + emoji opacity drop,
+   readable from a glance without redrawing the whole island. */
+body[data-companion-disabled="true"] .status-orb {
+  filter: saturate(0.4);
+}
+
+body[data-companion-disabled="true"] .status-emoji {
+  opacity: 0.65;
+}
+
+/* ============================================================
+   Expanded request panel
+   ============================================================ */
 
 .request-panel {
   max-height: calc(100% - 58px);
   overflow: auto;
-  padding: 0 15px 15px;
+  padding: 0 16px 16px;
   opacity: 1;
   transform: translateY(0);
   transition:
-    opacity 160ms ease,
-    transform 190ms cubic-bezier(0.2, 0.9, 0.2, 1);
+    opacity 280ms var(--ease-standard),
+    transform 360ms var(--ease-spring-soft);
 }
 
 .request-panel[hidden] {
   display: block;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 
 .request-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .eyebrow {
-  color: var(--muted);
+  color: var(--ink-1);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 500;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
 }
 
@@ -401,41 +480,51 @@ dd {
 h1 {
   margin-top: 2px;
   overflow: hidden;
+  color: var(--ink-0);
+  font-weight: 600;
   font-size: 15px;
-  line-height: 1.15;
+  letter-spacing: 0.005em;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .risk {
   flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 4px 10px;
   border-radius: 999px;
-  padding: 4px 8px;
-  background: var(--ok);
-  color: #06120c;
+  border: 1px solid var(--accent-sage);
+  background: transparent;
+  color: var(--accent-sage);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 600;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
 }
 
 .risk[data-risk="medium"] {
-  background: var(--warn);
-  color: #211707;
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
 }
 
 .risk[data-risk="high"] {
-  background: var(--bad);
-  color: #230606;
+  border-color: var(--accent-rose);
+  color: var(--accent-rose);
 }
 
 .request-summary {
   display: -webkit-box;
   margin-top: 10px;
-  overflow: hidden;
-  color: #eeeeee;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-inner-highlight);
+  color: var(--ink-0);
+  font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.45;
+  overflow: hidden;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -443,61 +532,115 @@ h1 {
 
 .request-meta {
   display: grid;
-  gap: 4px;
-  margin-top: 9px;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .request-meta div {
   display: grid;
-  grid-template-columns: 45px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
 }
 
 dt,
 dd {
   min-width: 0;
-  color: var(--muted);
-  font-size: 11px;
+}
+
+dt {
+  color: var(--ink-1);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 dd {
   overflow: hidden;
-  color: #d8d8d8;
+  color: var(--ink-0);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 12px;
 }
 
-.actions .allow {
-  grid-column: 1 / -1;
+/* The suggestion list contributes its children directly to the actions
+   column — no nested wrapper layout. Each suggestion button slots in
+   between Approve and Deny in the same vertical stack. */
+.suggestion-list {
+  display: contents;
 }
 
 .actions button,
-.answer-form button {
-  min-height: 34px;
+.answer-form button[type="submit"] {
+  min-height: 36px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink-0);
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  box-shadow: var(--shadow-inner-highlight);
+  transition:
+    background 220ms var(--ease-standard),
+    color 220ms var(--ease-standard),
+    transform 220ms var(--ease-standard);
 }
 
-.approve {
-  background: #15803d;
+.actions button:hover,
+.answer-form button[type="submit"]:hover {
+  transform: translateY(-1px);
+}
+
+.approve,
+.answer-form button[type="submit"] {
+  background: oklch(22% 0.025 150);
+  color: var(--accent-sage);
+}
+
+.approve:hover,
+.answer-form button[type="submit"]:hover {
+  background: oklch(26% 0.030 150);
+  color: oklch(80% 0.06 150);
 }
 
 .allow {
-  background: #2563eb;
+  background: oklch(22% 0.025 70);
+  color: var(--accent-warm);
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.allow:hover {
+  background: oklch(26% 0.030 70);
+  color: oklch(85% 0.10 70);
 }
 
 .deny {
-  background: #b91c1c;
+  background: oklch(22% 0.025 25);
+  color: var(--accent-rose);
 }
+
+.deny:hover {
+  background: oklch(26% 0.030 25);
+  color: oklch(78% 0.07 25);
+}
+
+/* ============================================================
+   Question form
+   ============================================================ */
 
 .answer-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 10px;
 }
 
@@ -507,9 +650,10 @@ dd {
 }
 
 .question-title {
-  color: #f7f7f7;
+  color: var(--ink-0);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
+  letter-spacing: 0.005em;
 }
 
 .option-list {
@@ -520,196 +664,228 @@ dd {
 
 .option-list button {
   min-height: 32px;
-  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: oklch(20% 0.014 270);
+  color: var(--ink-0);
+  font-size: 12px;
+  transition:
+    background 200ms var(--ease-standard),
+    border-color 200ms var(--ease-standard);
 }
 
-.option-list button:hover,
+.option-list button:hover {
+  background: oklch(24% 0.016 270);
+}
+
 .option-list button.selected {
-  background: #5b6ee1;
+  border-color: color-mix(in oklch, var(--accent), transparent 30%);
+  background: oklch(28% 0.030 195);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
 .question input {
   width: 100%;
-  height: 32px;
+  height: 34px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 11px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--text);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: oklch(15% 0.012 270);
+  color: var(--ink-0);
   font: inherit;
+  font-size: 12px;
+}
+
+.question input::placeholder {
+  color: var(--ink-2);
+}
+
+.question input:focus {
+  outline: none;
+  border-color: color-mix(in oklch, var(--accent), transparent 40%);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent), transparent 60%);
+}
+
+/* ============================================================
+   Status animations — animate transform / opacity so the loops stay
+   smooth; Chromium auto-promotes the layers, no will-change needed.
+   ============================================================ */
+
+[data-status="idle"] .status-emoji {
+  animation: emojiBreathe 6s ease-in-out infinite;
+}
+
+/* thinking: orb sits still, halo softly inhales */
+[data-status="thinking"] .status-orb::after {
+  animation: orbHalo 3.6s ease-in-out infinite;
 }
 
 [data-status="thinking"] .status-emoji {
-  animation: breathe 1.2s ease-in-out infinite;
+  animation: emojiBreathe 4.4s ease-in-out infinite;
 }
 
-[data-status="waiting"] .status-emoji {
-  animation: breathe 1.45s ease-in-out infinite;
+/* running_tool: ring rotates, emoji counter-rotates so it stays upright */
+[data-status="running_tool"] .status-orb {
+  animation: orbSpin 2.6s linear infinite;
 }
 
 [data-status="running_tool"] .status-emoji {
-  animation: spin 1.3s linear infinite;
+  animation: orbSpin 2.6s linear infinite reverse;
 }
 
-[data-status="waiting_approval"] .status-emoji,
-[data-status="waiting_answer"] .status-emoji {
-  animation: pulse 0.9s ease-in-out infinite;
+[data-status="waiting_approval"] .status-orb {
+  animation: orbAttention 1.8s ease-in-out infinite;
 }
 
-[data-status="failed"] .status-emoji,
-[data-status="blocked"] .status-emoji {
-  animation: shake 0.38s ease-in-out infinite;
+[data-status="waiting_approval"] .status-orb::after {
+  animation: orbHalo 1.8s ease-in-out infinite;
+}
+
+[data-status="waiting_approval"] .status-emoji {
+  animation: emojiBreathe 1.8s ease-in-out infinite;
+}
+
+[data-status="waiting"] .status-orb::after,
+[data-status="waiting_answer"] .status-orb::after {
+  animation: orbHalo 2.6s ease-in-out infinite;
+}
+
+[data-status="failed"] .status-orb,
+[data-status="blocked"] .status-orb {
+  animation: orbSway 3.4s ease-in-out infinite;
 }
 
 [data-status="done"] .status-emoji {
-  animation: pop 1.1s ease-in-out infinite;
+  animation: emojiBob 3s ease-in-out infinite;
 }
 
+/* ============================================================
+   Done attention — sage→warm sweep, sage glow on text
+   ============================================================ */
+
 body[data-attention="done"] .island {
-  border-color: rgba(66, 211, 146, 0.62);
   background:
-    linear-gradient(90deg, rgba(66, 211, 146, 0.18), rgba(16, 16, 16, 0.96) 46%, rgba(66, 211, 146, 0.1)),
-    var(--bg);
-  box-shadow:
-    0 0 0 1px rgba(66, 211, 146, 0.2),
-    0 0 28px rgba(66, 211, 146, 0.42),
-    0 10px 30px rgba(0, 0, 0, 0.45);
-  animation: doneIslandAttention 920ms ease-in-out 3;
+    linear-gradient(
+      105deg,
+      color-mix(in oklch, var(--accent-sage), transparent 88%) 0%,
+      transparent 38%,
+      color-mix(in oklch, var(--accent-warm), transparent 92%) 100%
+    ),
+    var(--surface-1);
 }
 
 body[data-attention="done"] .island::after {
   content: "";
   position: absolute;
-  inset: -35%;
+  inset: 0;
   z-index: 0;
-  background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, 0.28) 48%, transparent 68%);
+  border-radius: inherit;
   pointer-events: none;
-  transform: translateX(-120%) rotate(8deg);
-  animation: doneAttentionSweep 1180ms ease-out 2;
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    color-mix(in oklch, var(--accent-sage), transparent 78%) 48%,
+    color-mix(in oklch, var(--accent-warm), transparent 84%) 56%,
+    transparent 75%
+  );
+  transform: translateX(-120%);
+  animation: doneSweep 1.6s ease-out 2;
 }
 
 body[data-attention="done"] .status-bar,
 body[data-attention="done"] .request-panel {
+  position: relative;
   z-index: 1;
 }
 
-body[data-attention="done"][data-mode="compact"] .status-copy {
-  max-width: 104px;
-}
-
 body[data-attention="done"] .status-text {
-  color: var(--ok);
-  text-shadow: 0 0 10px rgba(66, 211, 146, 0.46);
-}
-
-body[data-attention="done"] .status-orb {
-  animation: doneOrbAttention 920ms ease-in-out 3;
+  color: var(--accent-sage);
+  text-shadow: 0 0 10px color-mix(in oklch, var(--accent-sage), transparent 65%);
 }
 
 body[data-attention="done"] .status-emoji {
-  animation: doneEmojiAttention 920ms ease-in-out 3;
+  animation: emojiCelebrate 980ms ease-in-out 3;
 }
 
-@keyframes breathe {
+/* ============================================================
+   Keyframes — every step interpolates transform / opacity only.
+   ============================================================ */
+
+@keyframes emojiBreathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.94;
+  }
   50% {
-    transform: scale(1.12);
-    filter: drop-shadow(0 0 6px rgba(124, 183, 255, 0.45));
-  }
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes pulse {
-  50% {
-    transform: scale(1.18);
-    filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.52));
-  }
-}
-
-@keyframes shake {
-  30% {
-    transform: translateX(-2px);
-  }
-
-  60% {
-    transform: translateX(2px);
-  }
-}
-
-@keyframes pop {
-  50% {
-    transform: translateY(-1px) scale(1.1);
-  }
-}
-
-@keyframes doneSlitPulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 0 rgba(66, 211, 146, 0),
-      0 0 10px rgba(66, 211, 146, 0.2);
-    opacity: 0.84;
-  }
-
-  45% {
-    box-shadow:
-      0 0 0 4px rgba(66, 211, 146, 0.14),
-      0 0 18px rgba(66, 211, 146, 0.54);
+    transform: scale(1.05);
     opacity: 1;
   }
 }
 
-@keyframes doneSlitFill {
-  45% {
-    filter: brightness(1.35);
+@keyframes emojiBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+
+@keyframes emojiCelebrate {
+  0%, 100% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-2px) scale(1.14); }
+  68% { transform: translateY(0) scale(1); }
+}
+
+@keyframes orbSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbAttention {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes orbSway {
+  0%, 100% { transform: translateX(0); }
+  35% { transform: translateX(-0.6px); }
+  65% { transform: translateX(0.6px); }
+}
+
+@keyframes orbHalo {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.18);
   }
 }
 
-@keyframes doneIslandAttention {
-  0%,
-  100% {
+@keyframes peekDoneGlow {
+  0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(66, 211, 146, 0.18),
-      0 0 18px rgba(66, 211, 146, 0.26),
-      0 10px 30px rgba(0, 0, 0, 0.45);
+      0 0 0 0 color-mix(in oklch, var(--accent-sage), transparent 100%),
+      0 0 6px color-mix(in oklch, var(--accent-sage), transparent 60%);
+    transform: scale(1);
   }
-
-  45% {
+  50% {
     box-shadow:
-      0 0 0 5px rgba(66, 211, 146, 0.16),
-      0 0 38px rgba(66, 211, 146, 0.66),
-      0 12px 34px rgba(0, 0, 0, 0.52);
+      0 0 0 5px color-mix(in oklch, var(--accent-sage), transparent 50%),
+      0 0 22px color-mix(in oklch, var(--accent-sage), transparent 25%);
+    transform: scale(1.08);
   }
 }
 
-@keyframes doneAttentionSweep {
-  0% {
-    transform: translateX(-120%) rotate(8deg);
+@keyframes peekDoneFill {
+  0%, 100% {
+    opacity: 0.9;
+    filter: brightness(1);
   }
-
-  62%,
-  100% {
-    transform: translateX(120%) rotate(8deg);
-  }
-}
-
-@keyframes doneOrbAttention {
-  45% {
-    transform: scale(1.09);
-    filter: drop-shadow(0 0 10px rgba(66, 211, 146, 0.62));
+  50% {
+    opacity: 1;
+    filter: brightness(1.55);
   }
 }
 
-@keyframes doneEmojiAttention {
-  35% {
-    transform: translateY(-2px) scale(1.16);
-  }
-
-  68% {
-    transform: translateY(0) scale(1);
-  }
+@keyframes doneSweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
 }

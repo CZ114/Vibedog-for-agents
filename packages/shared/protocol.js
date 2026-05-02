@@ -1,4 +1,22 @@
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
 const PROTOCOL_VERSION = 1;
+
+// Single global on/off switch for the Companion. Presence of this file means
+// every hook returns noop and Claude Code falls back to its native prompts.
+// The desktop bubble's power button toggles this file; users can also touch
+// or remove it manually.
+const COMPANION_DISABLED_FLAG = path.join(os.homedir(), ".claude-companion", "disabled");
+
+function isCompanionDisabled() {
+  try {
+    return fs.existsSync(COMPANION_DISABLED_FLAG);
+  } catch (_error) {
+    return false;
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -96,10 +114,12 @@ function normalizeDecision(value) {
 
 module.exports = {
   PROTOCOL_VERSION,
+  COMPANION_DISABLED_FLAG,
   claudeNoopDecision,
   claudePermissionRequestDecision,
   claudePreToolUseDecision,
   createId,
+  isCompanionDisabled,
   jsonResponse,
   normalizeDecision,
   nowIso,

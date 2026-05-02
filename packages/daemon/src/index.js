@@ -23,8 +23,32 @@ const HOST = process.env.CCC_HOST || "127.0.0.1";
 const REQUEST_TIMEOUT_MS = Number(process.env.CCC_APPROVAL_TIMEOUT_MS || 55_000);
 const DATA_DIR = process.env.CCC_DATA_DIR || path.join(process.cwd(), ".claude-companion");
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000;
+const EXTENDED_CONTEXT_WINDOW_TOKENS = 1_000_000;
 const CONTEXT_WINDOW_OVERRIDE_TOKENS = Number(process.env.CCC_CONTEXT_WINDOW_TOKENS || 0);
 const MODEL_CONTEXT_WINDOW_OVERRIDES = parseModelContextWindowOverrides(process.env.CCC_MODEL_CONTEXT_WINDOWS);
+// Claude Code auto-upgrades Opus 4.6/4.7 and Sonnet 4.6 to a 1M window on
+// Max/Team/Enterprise plans unless CLAUDE_CODE_DISABLE_1M_CONTEXT=1 is set.
+// The transcript itself only records the bare model id (e.g. "claude-opus-4-7"),
+// so we mirror Claude Code's own gating here instead of waiting for a [1m] tag.
+const CLAUDE_DISABLE_1M = process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT === "1" ||
+  process.env.CCC_DISABLE_1M_CONTEXT === "true";
+const ONE_M_MODEL_PATTERNS = [
+  /claude[-_ ]?opus[-_ ]?4[-_ ]?6/,
+  /claude[-_ ]?opus[-_ ]?4[-_ ]?7/,
+  /claude[-_ ]?sonnet[-_ ]?4[-_ ]?6/
+];
+
+// Per-user store of windows we've learned by direct observation. Keyed by
+// model family ("opus-4-7"), so a fresh build like claude-opus-4-7-20251115
+// inherits the same window without re-learning.
+const LEARNED_CONTEXT_FILE = path.join(os.homedir(), ".claude-companion", "learned-context.json");
+// Compact heuristic: a usage drop counts only if the prior peak was substantial.
+// 50k filters out start-of-session jitter and short tool round-trips.
+const COMPACT_PEAK_THRESHOLD = 50_000;
+const COMPACT_DROP_RATIO = 0.3;
+// Fixed buckets we snap a learned window into; new buckets get added as
+// Anthropic ships them. Keep ascending.
+const KNOWN_WINDOW_BUCKETS = [DEFAULT_CONTEXT_WINDOW_TOKENS, EXTENDED_CONTEXT_WINDOW_TOKENS];
 
 const pendingRequests = new Map();
 const sessionStates = new Map();
@@ -259,6 +283,105 @@ function modelFamilyFromText(text) {
   return "unknown";
 }
 
+// Family-versioned key — "claude-opus-4-7" / "claude-opus-4-7-20251115" both
+// collapse to "opus-4-7", so a learned window survives minor build bumps.
+function modelFamilyKey(model) {
+  if (!model) {
+    return null;
+  }
+  const text = String(model).toLowerCase();
+  const match = text.match(/(opus|sonnet|haiku)[-_ ]?(\d+)[-_ ]?(\d+)/);
+  if (!match) {
+    return null;
+  }
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function snapToKnownBucket(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  let best = KNOWN_WINDOW_BUCKETS[0];
+  let bestDistance = Math.abs(value - best);
+  for (const bucket of KNOWN_WINDOW_BUCKETS) {
+    const distance = Math.abs(value - bucket);
+    if (distance < bestDistance) {
+      best = bucket;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function loadLearnedContext() {
+  try {
+    const raw = fs.readFileSync(LEARNED_CONTEXT_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && parsed.models && typeof parsed.models === "object") {
+      return parsed;
+    }
+  } catch (_error) {
+    // Missing file or unparseable JSON: start fresh.
+  }
+  return { version: 1, models: {} };
+}
+
+let learnedContext = loadLearnedContext();
+let learnedContextWriteTimer = null;
+
+function saveLearnedContextSoon() {
+  if (learnedContextWriteTimer) {
+    return;
+  }
+  learnedContextWriteTimer = setTimeout(() => {
+    learnedContextWriteTimer = null;
+    try {
+      const dir = path.dirname(LEARNED_CONTEXT_FILE);
+      fs.mkdirSync(dir, { recursive: true });
+      const tmp = `${LEARNED_CONTEXT_FILE}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(learnedContext, null, 2), "utf8");
+      fs.renameSync(tmp, LEARNED_CONTEXT_FILE);
+    } catch (error) {
+      console.warn(`[warn] Failed to persist learned-context.json: ${error.message}`);
+    }
+  }, 500);
+}
+
+function getLearnedWindow(model) {
+  const key = modelFamilyKey(model);
+  if (!key) {
+    return null;
+  }
+  const entry = learnedContext.models[key];
+  if (!entry || !Number.isFinite(entry.window) || entry.window <= 0) {
+    return null;
+  }
+  return { window: entry.window, key };
+}
+
+function recordLearnedWindow(model, window, peakSeen, reason) {
+  const key = modelFamilyKey(model);
+  if (!key || !Number.isFinite(window) || window <= 0) {
+    return;
+  }
+  const previous = learnedContext.models[key];
+  // Never demote — a previously-confirmed 1M wins over a later weaker signal.
+  if (previous && previous.window >= window) {
+    if (Number.isFinite(peakSeen) && peakSeen > 0 && (!previous.peakSeen || peakSeen > previous.peakSeen)) {
+      previous.peakSeen = peakSeen;
+      saveLearnedContextSoon();
+    }
+    return;
+  }
+  learnedContext.models[key] = {
+    window,
+    peakSeen: Number.isFinite(peakSeen) && peakSeen > 0 ? peakSeen : null,
+    confirmedAt: nowIso(),
+    confirmedBy: reason
+  };
+  saveLearnedContextSoon();
+}
+
 function modelOverrideFromEnv(modelText) {
   const exact = MODEL_CONTEXT_WINDOW_OVERRIDES.find((item) => modelText === item.pattern);
   if (exact) {
@@ -288,10 +411,22 @@ function contextWindowFromModel(model) {
     return contextWindowRecord(override.tokens, "model-override", model, override.pattern);
   }
 
-  // Claude Code's model aliases and full model ids use a [1m] marker when the
-  // active model is running with the extended context window.
+  // Learned per-family from observed transcripts. Wins over [1m] / family
+  // defaults because it reflects what we've actually seen this model do.
+  const learned = getLearnedWindow(model);
+  if (learned) {
+    return contextWindowRecord(learned.window, "learned", model, learned.key);
+  }
+
+  // Claude Code's model aliases sometimes carry an explicit [1m] marker.
   if (text.includes("[1m]") || /(^|[^a-z0-9])1m([^a-z0-9]|$)/.test(text)) {
-    return contextWindowRecord(1_000_000, "model-id", model, "1m");
+    return contextWindowRecord(EXTENDED_CONTEXT_WINDOW_TOKENS, "model-id", model, "1m");
+  }
+
+  // Opus 4.6/4.7 and Sonnet 4.6 default to 1M on Claude Code unless the
+  // CLAUDE_CODE_DISABLE_1M_CONTEXT escape hatch is set.
+  if (!CLAUDE_DISABLE_1M && ONE_M_MODEL_PATTERNS.some((pattern) => pattern.test(text))) {
+    return contextWindowRecord(EXTENDED_CONTEXT_WINDOW_TOKENS, "claude-code-default", model, "1m-default");
   }
 
   if (text.includes("claude") || ["opus", "sonnet", "haiku"].some((name) => text.includes(name))) {
@@ -332,7 +467,14 @@ function contextUsageFromUsage(usage, model) {
   const cacheCreationTokens = numberFromAny(usage.cache_creation_input_tokens, usage.cacheCreationInputTokens);
   const outputTokens = numberFromAny(usage.output_tokens, usage.outputTokens);
   const usedTokens = inputTokens + cacheReadTokens + cacheCreationTokens + outputTokens;
-  const contextWindow = contextWindowFromUsage(usage, model);
+  let contextWindow = contextWindowFromUsage(usage, model);
+
+  // If observed usage already exceeds the resolved window, the model must
+  // have a larger window than we guessed. Promote to 1M rather than show >100%.
+  if (usedTokens > contextWindow.maxTokens && contextWindow.maxTokens < EXTENDED_CONTEXT_WINDOW_TOKENS) {
+    contextWindow = contextWindowRecord(EXTENDED_CONTEXT_WINDOW_TOKENS, "observed-overrun", model, "exceeded-200k");
+  }
+
   const maxTokens = contextWindow.maxTokens;
 
   if (!usedTokens || !maxTokens) {
@@ -382,38 +524,106 @@ function latestContextUsageFromTranscript(transcriptPath, sessionId, cwd) {
   return null;
 }
 
-function latestContextUsageFromTranscriptFile(transcriptPath) {
+function usedTokensFromUsage(usage) {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return 0;
+  }
+  return numberFromAny(usage.input_tokens, usage.inputTokens) +
+    numberFromAny(usage.cache_read_input_tokens, usage.cacheReadInputTokens) +
+    numberFromAny(usage.cache_creation_input_tokens, usage.cacheCreationInputTokens) +
+    numberFromAny(usage.output_tokens, usage.outputTokens);
+}
+
+// Scan a transcript file for the latest usage line plus any peak / compact
+// signals visible in the suffix we read. Returning a single struct lets us
+// fold both display data and learned-context updates into one I/O pass.
+function scanTranscriptUsage(transcriptPath) {
   try {
     const stats = fs.statSync(transcriptPath);
     const readSize = Math.min(stats.size, 256 * 1024);
     const fd = fs.openSync(transcriptPath, "r");
+    let lines;
     try {
       const buffer = Buffer.alloc(readSize);
       fs.readSync(fd, buffer, 0, readSize, stats.size - readSize);
-      const lines = buffer.toString("utf8").split(/\r?\n/).filter(Boolean);
-      for (let index = lines.length - 1; index >= 0; index -= 1) {
-        let item;
-        try {
-          item = JSON.parse(lines[index]);
-        } catch (_error) {
-          continue;
-        }
-
-        const usage = item && item.message && item.message.usage;
-        const model = item && item.message && item.message.model;
-        const contextUsage = contextUsageFromUsage(usage, model);
-        if (contextUsage) {
-          return contextUsage;
-        }
-      }
+      lines = buffer.toString("utf8").split(/\r?\n/).filter(Boolean);
     } finally {
       fs.closeSync(fd);
     }
+
+    let latestUsage = null;
+    let latestModel = null;
+    let peak = 0;
+    let runningPeak = 0;
+    let compactDetected = false;
+    let peakBeforeCompact = 0;
+
+    for (const line of lines) {
+      let item;
+      try {
+        item = JSON.parse(line);
+      } catch (_error) {
+        continue;
+      }
+      const usage = item && item.message && item.message.usage;
+      if (!usage) {
+        continue;
+      }
+      const used = usedTokensFromUsage(usage);
+      if (used <= 0) {
+        continue;
+      }
+
+      // A sharp drop after a substantial peak is our compact signal — the
+      // suffix may even straddle the compact boundary. Reset the running peak
+      // afterwards so we don't re-trigger on the same drop.
+      if (runningPeak >= COMPACT_PEAK_THRESHOLD && used < runningPeak * COMPACT_DROP_RATIO) {
+        compactDetected = true;
+        peakBeforeCompact = Math.max(peakBeforeCompact, runningPeak);
+        runningPeak = used;
+      } else if (used > runningPeak) {
+        runningPeak = used;
+      }
+      if (used > peak) {
+        peak = used;
+      }
+
+      latestUsage = usage;
+      const model = item.message.model;
+      if (model) {
+        latestModel = model;
+      }
+    }
+
+    return { latestUsage, latestModel, peak, compactDetected, peakBeforeCompact };
   } catch (_error) {
     return null;
   }
+}
 
-  return null;
+function latestContextUsageFromTranscriptFile(transcriptPath) {
+  const scan = scanTranscriptUsage(transcriptPath);
+  if (!scan) {
+    return null;
+  }
+
+  // Promote learned window: peak-overrun is unambiguous (a 200k model can't
+  // hold more than 200k); compact-detected snaps to the nearest known bucket.
+  if (scan.latestModel) {
+    if (scan.peak > DEFAULT_CONTEXT_WINDOW_TOKENS) {
+      recordLearnedWindow(scan.latestModel, EXTENDED_CONTEXT_WINDOW_TOKENS, scan.peak, "peak-overrun");
+    } else if (scan.compactDetected && scan.peakBeforeCompact >= COMPACT_PEAK_THRESHOLD) {
+      const bucket = snapToKnownBucket(scan.peakBeforeCompact);
+      if (bucket) {
+        recordLearnedWindow(scan.latestModel, bucket, scan.peakBeforeCompact, "compact-observed");
+      }
+    }
+  }
+
+  if (!scan.latestUsage) {
+    return null;
+  }
+  return contextUsageFromUsage(scan.latestUsage, scan.latestModel);
 }
 
 function sessionIdFromHookInput(hookInput) {
@@ -1658,7 +1868,14 @@ function permissionRequestDecision(request, approval) {
     };
 
     if (rawDecision === "always_allow") {
-      const suggestion = request.permissionSuggestions.find((item) => item && item.behavior === "allow");
+      // Renderer ships the index of the suggestion the user picked from the
+      // bubble; legacy CLI / web UI clients leave it undefined and we fall
+      // back to the first allow-style suggestion.
+      const idx = Number(approval.suggestionIndex);
+      const suggestions = Array.isArray(request.permissionSuggestions) ? request.permissionSuggestions : [];
+      const suggestion = Number.isInteger(idx) && idx >= 0 && idx < suggestions.length
+        ? suggestions[idx]
+        : suggestions.find((item) => item && item.behavior === "allow");
       if (suggestion) {
         decision.updatedPermissions = [suggestion];
       }
@@ -1722,7 +1939,7 @@ async function handlePermissionDecision(req, res) {
     deviceName: device.deviceName
   });
 
-  pending.resolve({ decision, reason, answers: body.answers });
+  pending.resolve({ decision, reason, answers: body.answers, suggestionIndex: body.suggestionIndex });
   broadcastWsEvent("permission_decision", {
     requestId,
     decision,
@@ -1780,7 +1997,7 @@ function applyPermissionDecisionFromWebSocket(client, body) {
     deviceName: client.device && client.device.deviceName
   });
 
-  pending.resolve({ decision, reason, answers: body.answers });
+  pending.resolve({ decision, reason, answers: body.answers, suggestionIndex: body.suggestionIndex });
   sendWsEvent(client, "permission_decision_result", {
     ok: true,
     requestId,

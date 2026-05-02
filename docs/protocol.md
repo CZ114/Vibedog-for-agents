@@ -344,11 +344,26 @@ input_tokens + cache_read_input_tokens + cache_creation_input_tokens + output_to
 1. Explicit `usage.context_window_tokens` / `usage.max_context_tokens` field if Claude ever supplies one.
 2. The `CCC_CONTEXT_WINDOW_TOKENS` env override, when local testing needs to force a single value.
 3. The `CCC_MODEL_CONTEXT_WINDOWS` env override, parsed as a JSON map whose keys are exact model ids or model-id substrings.
-4. The `message.model` recorded for the same transcript line. Models whose id or alias contains `[1m]` / `1m` report a 1,000,000-token window.
-5. Built-in model-family defaults, currently 200,000 for Claude model families.
-6. Built-in default of 200,000.
+4. A learned per-family window in `~/.claude-companion/learned-context.json`, see [Learned Context Windows](#learned-context-windows) below.
+5. The `message.model` recorded for the same transcript line. Models whose id or alias contains `[1m]` / `1m` report a 1,000,000-token window.
+6. Claude Code's own 1M default for Opus 4.6, Opus 4.7, and Sonnet 4.6, mirrored locally. Disabled when `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (Claude Code's own escape hatch) or `CCC_DISABLE_1M_CONTEXT=true` is set in the daemon's environment.
+7. Built-in model-family defaults, currently 200,000 for Claude model families.
+8. Built-in default of 200,000.
 
-The model id used to derive the window is returned as `contextUsage.model`. Clients also receive `contextUsage.modelFamily`, `contextUsage.windowSource`, and `contextUsage.windowRule` so they can explain whether the value came from transcript metadata, an env override, a 1M model marker, or a default.
+If the observed `usedTokens` value already exceeds the resolved `maxTokens`, the daemon promotes the window to 1,000,000 and reports `windowSource: "observed-overrun"`. This catches cases where the transcript records a bare model id (e.g. `claude-opus-4-7`) but the live session is running with the extended window.
+
+#### Learned Context Windows
+
+The daemon scans every transcript pass for two signals and persists what it learns to `~/.claude-companion/learned-context.json` (per-user, shared across projects):
+
+- **peak-overrun**: any single transcript line whose `usedTokens > 200,000` proves the model is on a window larger than 200k. The daemon writes `window: 1000000`, `confirmedBy: "peak-overrun"` for that family.
+- **compact-observed**: when a line's `usedTokens` drops below 30% of the prior running peak, and that peak is at least 50,000 tokens, the daemon treats the drop as a `/compact` event and snaps the pre-compact peak to the nearest known bucket (200,000 or 1,000,000), recording `confirmedBy: "compact-observed"`.
+
+Keys are model families (`opus-4-7`, `sonnet-4-6`, `haiku-3-5`), so a fresh build like `claude-opus-4-7-20251115` inherits a previously learned window without needing to re-observe.
+
+Entries are append-only / promote-only — a learned 1M is never demoted by a later weaker signal. Delete the file to reset. Explicit env overrides (priority 2 / 3) still win above the learned table when the user wants to force a value.
+
+The model id used to derive the window is returned as `contextUsage.model`. Clients also receive `contextUsage.modelFamily`, `contextUsage.windowSource`, and `contextUsage.windowRule` so they can explain whether the value came from transcript metadata, an env override, a 1M model marker, the Claude Code 1M default, an observed overrun, or a fallback.
 
 Example model-specific override:
 
@@ -649,7 +664,12 @@ Supported decision aliases:
 - `deny` or `block` -> Claude Code `deny`
 - `ask` -> Claude Code `ask`
 - `answer` -> for `AskUserQuestion`, return `allow` with `updatedInput.questions` and `updatedInput.answers`
-- `always_allow` -> for native `PermissionRequest`, allow and apply Claude's first allow suggestion when available
+- `always_allow` -> for native `PermissionRequest`, allow and apply one entry from Claude's `permission_suggestions[]`. The desktop bubble passes `suggestionIndex` (number) so a specific suggestion is used; CLI clients that omit it fall back to the first `behavior: "allow"` suggestion.
+
+Optional fields:
+
+- `suggestionIndex` (number, with `always_allow` only) — index into the request's `permissionSuggestions[]`. Each suggestion is rendered as its own button in the bubble (e.g. `Always allow Read /tmp/**`); the index identifies which one the user picked.
+- `answers` (object, with `answer` only) — `{ "Question text": "Selected answer" }` map.
 
 Response:
 
