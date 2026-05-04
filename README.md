@@ -3,16 +3,10 @@
 > Floating Windows companion for Claude Code — approvals, status, and a daily knowledge-card review, all in one bubble that morphs like a liquid droplet between modes.
 
 <p align="center">
-  <img src="media/hero-status.gif" alt="Floating bubble cycling through Idle, Thinking, Running tool, Awaiting approval, and Done — the orb tells you what Claude is doing at a glance" width="520">
+  <img src="media/hero-morph.apng" alt="Bubble morphs from compact to Settings, drag-selects sessions in the heatmap, generates a fresh knowledge-card deck" width="480">
 </p>
 
-> The orb tells you what Claude is doing at a glance. No alt-tab.
-
-<p align="center">
-  <img src="media/edges-cycle.gif" alt="Bubble docking to right, top, left, bottom edges — and tucking behind each one to a thin context slit when not in use" width="640">
-</p>
-
-> Drag it to any screen edge. When you're not looking at it, it tucks behind the edge to a 4-px context-percent slit — out of your way, still glanceable.
+> Pick sessions → Generate → review the fresh deck. The bubble morphs between every mode on a liquid droplet curve so the navigation reads as one motion.
 
 > iOS planned. Internally still referred to as "Claude Code Companion" in protocol code and env vars (`CCC_*`) — same project.
 
@@ -37,16 +31,6 @@
 | **⤢ Live** | ⤢ button | semi-transparent monitor with breathing pulse: today's deck summary + active Claude sessions |
 
 Transitions use a single liquid water-droplet morph — the OS window resize and the renderer's `border-radius` interpolate on a synchronized bouncy curve, so the bubble stretches rather than snapping.
-
-<p align="center">
-  <img src="media/hero-morph.apng" alt="Pick sessions in the heatmap → Generate → see the fresh deck" width="720">
-</p>
-
-<p align="center">
-  <img src="media/approval-flow.gif" alt="Approval card auto-opens, user clicks Approve" width="360">
-  &nbsp;
-  <img src="media/cards-review.gif" alt="Knowledge Cards review flow" width="360">
-</p>
 
 ---
 
