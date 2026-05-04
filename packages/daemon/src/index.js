@@ -1597,7 +1597,19 @@ async function handleCardsGenerate(req, res) {
   //   - scanAllProjects: every JSONL under ~/.claude/projects/, including
   //     sessions Companion never saw a hook for (other repos, history
   //     pre-dating Companion install). Slice 7's "scan ALL projects".
-  const cutoffMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  //
+  // Time window vs explicit picks: in Auto mode the windowDays cutoff
+  // is the source of truth (e.g. "today's sessions only"). But when the
+  // user manually picked sessions in the heatmap picker — anything they
+  // can SEE in the picker, often days or weeks back — the cutoff would
+  // silently exclude their picks before the selectedSessionIds filter
+  // even runs, leaving allSessions empty and the deck mysteriously bare.
+  // So: explicit picks override the time window entirely. The picker UI
+  // is already the boundary the user expects to control.
+  const hasExplicitPicks = selectedSessionIds.length > 0;
+  const cutoffMs = hasExplicitPicks
+    ? 0
+    : Date.now() - windowDays * 24 * 60 * 60 * 1000;
   const TRANSCRIPT_TOTAL_BUDGET = transcriptBudget;
   // Per-session cap defaults to total/5 so a single chatty session can't
   // monopolize the prompt; env override still wins for power users.
