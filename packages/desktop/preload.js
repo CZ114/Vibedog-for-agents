@@ -8,9 +8,11 @@ contextBridge.exposeInMainWorld("companionDesktop", {
   openSettings: () => ipcRenderer.invoke("open:settings"),
   openCards: () => ipcRenderer.invoke("open:cards"),
   openLive: () => ipcRenderer.invoke("open:live"),
+  setStatusWidth: (width) => ipcRenderer.invoke("window:set-status-width", width),
   peekHover: () => ipcRenderer.invoke("window:peek-hover"),
   peekUnhover: () => ipcRenderer.invoke("window:peek-unhover"),
   doneAttention: () => ipcRenderer.invoke("window:done-attention"),
+  statusPopout: (status) => ipcRenderer.invoke("window:status-popout", { status }),
   ackAttention: () => ipcRenderer.invoke("window:ack-attention"),
   clearAttention: () => ipcRenderer.invoke("window:clear-attention"),
   setHold: (value) => ipcRenderer.invoke("window:set-hold", Boolean(value)),
@@ -36,6 +38,8 @@ contextBridge.exposeInMainWorld("companionDesktop", {
   },
   getEnabled: () => ipcRenderer.invoke("companion:get-enabled"),
   setEnabled: (enabled) => ipcRenderer.invoke("companion:set-enabled", enabled),
+  getAutoStart: () => ipcRenderer.invoke("app:get-auto-start"),
+  setAutoStart: (enabled) => ipcRenderer.invoke("app:set-auto-start", enabled),
   onEnabledChanged: (callback) => {
     ipcRenderer.on("companion:enabled-changed", (_event, enabled) => callback(Boolean(enabled)));
   }

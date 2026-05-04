@@ -178,6 +178,8 @@ const STRINGS = {
 
     // ── Settings: companion ─────────────────────────────────
     "settings.companion.hook": "Approval hook",
+    "settings.companion.autoStart": "Start with Windows",
+    "settings.companion.autoStartMeta": "launch Clawdeck when you sign in — bubble lands at its last position",
     "settings.companion.consent": "Cards consent",
     "settings.theme.meta": "click any preset to apply · the bubble's color button cycles through them in order",
     "settings.language.meta": "bubble UI language; cards generator prompt also follows this setting",
@@ -357,6 +359,8 @@ const STRINGS = {
 
     // ── 设置：companion ──────────────────────────────
     "settings.companion.hook": "批准 hook",
+    "settings.companion.autoStart": "开机自启",
+    "settings.companion.autoStartMeta": "登录 Windows 时自动拉起 Clawdeck — 气泡会落到上次的位置",
     "settings.companion.consent": "卡片同意书",
     "settings.theme.meta": "点任意主题立即应用 · 浮岛上的颜色按钮按顺序循环切换",
     "settings.language.meta": "浮岛 UI 语言；卡片生成器的提示词也跟随此设置",

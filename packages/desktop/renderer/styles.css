@@ -273,18 +273,26 @@ body[data-peeking="true"] .request-panel {
   pointer-events: none;
 }
 
+/* Peek progress bar — centered along the snapped edge, sized to ~1/φ
+   (61.8 %) of the bubble's exposed dimension. The previous "edge to edge
+   minus 7 px" treatment looked thin on the screen but visually ran the
+   full width of the capsule, which read as a chunky underline. The
+   golden-ratio width gives the slit a quieter, more deliberate presence
+   in the user's peripheral vision. */
 body[data-snap-horizontal="left"] .peek-context {
-  top: 7px;
+  top: 50%;
   right: 4px;
-  bottom: 7px;
+  height: 61.8%;
   width: 4px;
+  transform: translateY(-50%);
 }
 
 body[data-snap-horizontal="right"] .peek-context {
-  top: 7px;
-  bottom: 7px;
+  top: 50%;
   left: 4px;
+  height: 61.8%;
   width: 4px;
+  transform: translateY(-50%);
 }
 
 body[data-snap-horizontal="left"] .peek-context-fill,
@@ -296,17 +304,19 @@ body[data-snap-horizontal="right"] .peek-context-fill {
 }
 
 body:not([data-snap-horizontal])[data-snap-vertical="top"] .peek-context {
-  right: 7px;
   bottom: 4px;
-  left: 7px;
+  left: 50%;
+  width: 61.8%;
   height: 4px;
+  transform: translateX(-50%);
 }
 
 body:not([data-snap-horizontal])[data-snap-vertical="bottom"] .peek-context {
   top: 4px;
-  right: 7px;
-  left: 7px;
+  left: 50%;
+  width: 61.8%;
   height: 4px;
+  transform: translateX(-50%);
 }
 
 body:not([data-snap-horizontal]) .peek-context-fill {
@@ -427,6 +437,11 @@ body:not([data-mode="compact"]) .status-emoji {
 }
 
 .status-text {
+  /* Always full width — never truncated. The OS window animates to fit
+     the text (see main.js#compactCapsule), so flex: 0 0 auto + overflow
+     visible reflects the natural width and the .window-actions strip
+     keeps right: 7 px clearance because main resized the window to make
+     room for text + gap + controls. */
   flex: 0 0 auto;
   overflow: visible;
   color: var(--ink-0);
@@ -2820,12 +2835,21 @@ body[data-peeking="true"] .live-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   min-height: 28px;
+  /* flex-wrap so the right-side control (segmented / slider / toggle)
+     drops below the label when the panel is too narrow for both —
+     prevents the label from being squeezed into a 60-px column where
+     the meta text wraps over itself across rows. */
+  flex-wrap: wrap;
 }
 .settings-row-text {
   display: flex;
   flex-direction: column;
+  /* Claim space first so meta text can sit on a line or two instead of
+     a vertical stack of single words. min-width: 0 still allows shrink
+     when really needed. */
+  flex: 1 1 180px;
   min-width: 0;
 }
 .settings-row-label {

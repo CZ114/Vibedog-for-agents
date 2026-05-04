@@ -13,13 +13,9 @@ const STATUS_META = {
   blocked: { emoji: "\u26D4", label: "Blocked" },
   offline: { emoji: "\u{1F50C}", label: "Offline" }
 };
-const DONE_ATTENTION_FROM_STATUSES = new Set([
-  "thinking",
-  "running_tool",
-  "waiting",
-  "waiting_approval",
-  "waiting_answer"
-]);
+// Brief pause between renderStatus updating the DOM and the popout IPC
+// firing — gives the orb's CSS a frame to render the new status before
+// the bubble glides out of peek showing it.
 const DONE_ATTENTION_TRIGGER_DELAY_MS = 260;
 
 const state = {
@@ -89,7 +85,7 @@ const state = {
     allowSessionDelete: false
   }
 };
-let doneAttentionTimer = null;
+let statusPopoutTriggerTimer = null;
 let pairingHideTimer = null;
 // Set while the system color picker is open. Mirrors the main-process holdOpen
 // state so the renderer-side controls-hide timer doesn't fire while the user
@@ -232,6 +228,7 @@ const els = {
   dayAllToggle: document.getElementById("dayAllToggle"),
   pickerConfirmBtn: document.getElementById("pickerConfirmBtn"),
   toggleAllowSessionDelete: document.getElementById("toggleAllowSessionDelete"),
+  toggleAutoStart: document.getElementById("toggleAutoStart"),
   toggleWebFallback: document.getElementById("toggleWebFallback"),
   sessionsExpander: document.getElementById("sessionsExpander"),
   sessionsCountText: document.getElementById("sessionsCountText"),
@@ -596,15 +593,38 @@ function renderContext(contextUsage) {
   els.statusOrb.title = `${contextUsage.label || `ctx ${percent}%`}${model}${source}`;
 }
 
-function maybeTriggerDoneAttention(status) {
+// Statuses worth flashing the bubble out of peek for. Idle / offline are the
+// resting / disconnected states — popping the bubble out for those would
+// just be visual noise (you'd see it pop right after every work cycle ends).
+const POPOUT_DESTINATION_STATUSES = new Set([
+  "thinking",
+  "running_tool",
+  "waiting",
+  "waiting_approval",
+  "waiting_answer",
+  "done",
+  "failed",
+  "blocked"
+]);
+
+// Fire a popout on every status change. Main process holds the bubble out
+// for ~4 s on transient statuses, ~10 min on `done` (or until the next
+// status supersedes it). The 260 ms trigger delay lets the orb's CSS update
+// land first so the popped-out bubble already shows the new status.
+function maybeTriggerStatusPopout(status) {
   const previousStatus = state.lastStatus;
   state.lastStatus = status;
 
-  if (doneAttentionTimer && status !== "done") {
-    window.clearTimeout(doneAttentionTimer);
-    doneAttentionTimer = null;
+  // Status flapped away from done before the renderer-side trigger delay
+  // fired — cancel the pending trigger so we don't pop a stale state.
+  if (statusPopoutTriggerTimer && status !== previousStatus) {
+    window.clearTimeout(statusPopoutTriggerTimer);
+    statusPopoutTriggerTimer = null;
   }
 
+  // Mirror the old "left done → drop attention" cleanup in the renderer
+  // state. Main also clears its attentionState on the next popoutForStatus,
+  // but keeping the renderer-side flag in sync avoids stale UI badges.
   if (status !== "done" && state.attention === "done") {
     state.attention = null;
     if (window.companionDesktop && window.companionDesktop.clearAttention) {
@@ -612,20 +632,14 @@ function maybeTriggerDoneAttention(status) {
     }
   }
 
-  if (status !== "done" || !DONE_ATTENTION_FROM_STATUSES.has(previousStatus)) {
-    return;
-  }
-  if (!window.companionDesktop || !window.companionDesktop.doneAttention) {
-    return;
-  }
+  if (status === previousStatus) return;
+  if (!POPOUT_DESTINATION_STATUSES.has(status)) return;
+  if (!window.companionDesktop || !window.companionDesktop.statusPopout) return;
 
-  if (doneAttentionTimer) {
-    window.clearTimeout(doneAttentionTimer);
-  }
-  doneAttentionTimer = window.setTimeout(() => {
-    doneAttentionTimer = null;
-    if (els.island.dataset.status === "done") {
-      window.companionDesktop.doneAttention();
+  statusPopoutTriggerTimer = window.setTimeout(() => {
+    statusPopoutTriggerTimer = null;
+    if (els.island.dataset.status === status) {
+      window.companionDesktop.statusPopout(status);
     }
   }, DONE_ATTENTION_TRIGGER_DELAY_MS);
 }
@@ -656,7 +670,27 @@ function renderStatus(status, detail, contextUsage) {
   els.statusText.textContent = meta.label;
   els.statusDetail.textContent = detail || "";
   renderContext(contextUsage);
-  maybeTriggerDoneAttention(status);
+  maybeTriggerStatusPopout(status);
+  reportStatusTextWidth();
+}
+
+// Tell main how wide the status text actually rendered so it can resize
+// the compact bubble to fit. Measurement happens on the next paint so the
+// new textContent has actually laid out. Main no-ops if the value hasn't
+// changed, so this is safe to call on every renderStatus tick.
+let pendingStatusWidthFrame = 0;
+function reportStatusTextWidth() {
+  if (!window.companionDesktop || !window.companionDesktop.setStatusWidth) return;
+  if (pendingStatusWidthFrame) return;
+  pendingStatusWidthFrame = window.requestAnimationFrame(() => {
+    pendingStatusWidthFrame = 0;
+    if (!els.statusText) return;
+    const rect = els.statusText.getBoundingClientRect();
+    const w = Math.ceil(rect.width);
+    if (w > 0) {
+      window.companionDesktop.setStatusWidth(w);
+    }
+  });
 }
 
 function renderSession() {
@@ -3670,6 +3704,21 @@ bindToggle(els.toggleAutoWrongBook, "autoAddWrong");
 bindToggle(els.toggleStreakNotif, "streakNotif");
 bindToggle(els.toggleWebFallback, "webFallback");
 bindToggle(els.toggleAllowSessionDelete, "allowSessionDelete");
+
+// Auto-start toggle is OS-managed (Electron's setLoginItemSettings hits
+// the registry on Windows / LaunchAgents on macOS), so it doesn't sit in
+// state.settings.* like the other toggles. We read the current value from
+// main on mount, paint the button, and write back through IPC on click.
+if (els.toggleAutoStart && window.companionDesktop?.getAutoStart) {
+  window.companionDesktop.getAutoStart().then((on) => {
+    paintToggle(els.toggleAutoStart, on);
+  });
+  els.toggleAutoStart.addEventListener("click", async () => {
+    const next = !els.toggleAutoStart.classList.contains("is-on");
+    const result = await window.companionDesktop.setAutoStart(next);
+    paintToggle(els.toggleAutoStart, result);
+  });
+}
 
 if (els.cardCountSlider) {
   els.cardCountSlider.addEventListener("input", () => {

@@ -68,7 +68,11 @@ function jsonResponse(res, statusCode, body) {
   res.end(payload);
 }
 
-function readJsonBody(req, maxBytes = 1024 * 1024) {
+// Hook payloads can include full file contents (Write/Edit tools) and large
+// tool outputs (grep / bash dumps), which routinely exceed the original 1 MB
+// limit. Daemon only listens on 127.0.0.1 so DoS surface is empty — generous
+// ceiling is safe.
+function readJsonBody(req, maxBytes = 32 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
 

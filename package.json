@@ -1,8 +1,15 @@
 {
   "name": "clawdeck",
-  "version": "0.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Clawdeck — a floating Windows desktop companion for Claude Code approvals, sessions, and status. iPhone companion planned.",
+  "author": "CZ114",
+  "homepage": "https://github.com/CZ114/clawdeck",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CZ114/clawdeck.git"
+  },
+  "main": "packages/desktop/main.js",
   "scripts": {
     "daemon": "node packages/daemon/src/index.js",
     "hook:event": "node packages/hooks/event.js",
@@ -16,13 +23,53 @@
     "doctor": "node scripts/doctor.js",
     "desktop": "electron packages/desktop/main.js",
     "smoke": "node scripts/smoke-test.js",
-    "render-demos": "node scripts/render-demos.js"
+    "render-demos": "node scripts/render-demos.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win"
   },
   "engines": {
     "node": ">=20"
   },
+  "build": {
+    "appId": "io.clawdeck.app",
+    "productName": "Clawdeck",
+    "copyright": "© 2026 Clawdeck",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "packages/**/*",
+      "package.json",
+      "!**/*.{md,test.js,spec.js}",
+      "!**/.{git,idea,vscode}",
+      "!**/{__tests__,test,tests,coverage,docs,examples}"
+    ],
+    "extraResources": [],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Clawdeck",
+      "uninstallDisplayName": "Clawdeck"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    }
+  },
   "devDependencies": {
     "electron": "^41.4.0",
+    "electron-builder": "^25.1.8",
     "playwright": "^1.49.0"
   }
 }

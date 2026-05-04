@@ -48,7 +48,10 @@ function setCompanionEnabled(enabled) {
 const BUBBLE_PADDING = 12;
 const CAPSULE_BOUNDS = {
   compact: { width: 124, height: 42 },
-  approval: { width: 360, height: 238 },
+  // 280 (was 238) — at the old height the request-summary box and the
+  // Approve/Deny row were both clipped by .island's overflow:hidden when
+  // cwd / reason ran more than one line. 280 leaves comfortable room.
+  approval: { width: 360, height: 280 },
   question: { width: 360, height: 300 },
   // cards: knowledge-cards mode (Stage 1.5). Today / History / Wrong-book
   // tabs, daily abstract, active-review flow.
@@ -62,9 +65,45 @@ const CAPSULE_BOUNDS = {
   live: { width: 380, height: 440 }
 };
 const COMPACT_HOVER_CAPSULE = { width: 224, height: 42 };
+// Compact bubble layout constants — mirror the CSS measurements in
+// styles.css (.status-bar padding, .drag-region gap, .status-orb size,
+// .window-actions strip dimensions). Used by compactCapsule() below to
+// resize the OS window so the status text always fits without being
+// clipped by the absolute-positioned controls strip on hover.
+const COMPACT_PAD_L = 9;          // .status-bar padding-left in compact
+const COMPACT_PAD_R = 14;         // breathing room on the right when no controls
+const COMPACT_ORB_W = 26;         // .status-orb width in compact
+const COMPACT_GAP   = 9;          // .drag-region gap between orb and text
+const COMPACT_TEXT_GAP_BEFORE_CONTROLS = 12; // safety gap before controls strip
+const COMPACT_CONTROLS_W = 140;   // 6×20 buttons + 5×3 gaps + 2.5×2 padding
+const COMPACT_CONTROLS_R = 7;     // .window-actions right offset
+const COMPACT_TEXT_W_MIN = 32;    // baseline width (~"Idle")
+const COMPACT_TEXT_W_MAX = 220;   // safety cap so a runaway label can't widen indefinitely
+let compactTextWidth = COMPACT_TEXT_W_MIN; // updated by renderer via IPC
+
 function paddedBounds(b) {
   return { width: b.width + 2 * BUBBLE_PADDING, height: b.height + 2 * BUBBLE_PADDING };
 }
+
+// Dynamic compact capsule. The OS BrowserWindow is rectangular and clicks
+// through the transparent gutter bind to its bounds, so the bubble must
+// physically resize to accommodate the visible status text. Renderer reports
+// the rendered .status-text pixel width via window:set-status-width; main
+// recomputes the capsule and animates to the new bounds.
+function compactCapsule(expanded) {
+  const textW = clamp(compactTextWidth, COMPACT_TEXT_W_MIN, COMPACT_TEXT_W_MAX);
+  const baseW = COMPACT_PAD_L + COMPACT_ORB_W + COMPACT_GAP + textW + COMPACT_PAD_R;
+  if (!expanded) {
+    return { width: Math.max(CAPSULE_BOUNDS.compact.width, baseW), height: 42 };
+  }
+  const expandedW = COMPACT_PAD_L + COMPACT_ORB_W + COMPACT_GAP + textW
+    + COMPACT_TEXT_GAP_BEFORE_CONTROLS + COMPACT_CONTROLS_W + COMPACT_CONTROLS_R;
+  return { width: Math.max(COMPACT_HOVER_CAPSULE.width, expandedW), height: 42 };
+}
+function compactBounds(expanded) {
+  return paddedBounds(compactCapsule(expanded));
+}
+
 const MODE_BOUNDS = {
   compact: paddedBounds(CAPSULE_BOUNDS.compact),
   approval: paddedBounds(CAPSULE_BOUNDS.approval),
@@ -93,6 +132,12 @@ const HOVER_HYSTERESIS_PX = 18;
 // peek slit keeps pulsing (see styles.css peekDoneGlow) until the user
 // actually moves the pointer over it.
 const DONE_ATTENTION_MS = 10 * 60 * 1000;
+// How long the bubble pops out for non-`done` status changes (thinking,
+// running_tool, waiting, etc.) while snapped. Brief glance, then auto-tucks
+// back so the user isn't permanently distracted by transient state. A new
+// status arriving cancels the running timer and starts a fresh cycle —
+// including new-status-after-done, which retracts a stuck done bubble.
+const STATUS_POPOUT_MS = Math.max(1000, Number(process.env.CCC_STATUS_POPOUT_MS) || 2000);
 
 let mainWindow = null;
 let currentMode = "compact";
@@ -106,7 +151,7 @@ let snapSuppressedUntil = 0;
 let compactCollapseTimer = null;
 let compactHoverVisibleSince = 0;
 let attentionState = null;
-let doneAttentionTimer = null;
+let statusPopoutTimer = null;
 let peekHoverPollTimer = null;
 let desktopStateWriteTimer = null;
 let windowPriorityTimer = null;
@@ -279,7 +324,10 @@ function scheduleDesktopStateSave() {
 }
 
 function compactSize() {
-  return compactHoverExpanded ? COMPACT_HOVER_BOUNDS : MODE_BOUNDS.compact;
+  // Dynamic — width grows to fit the current status-text label so long
+  // statuses ("Awaiting approval", "Running tool · Bash") never get clipped
+  // by the controls strip on the right.
+  return compactBounds(compactHoverExpanded);
 }
 
 // All snap math operates on the BrowserWindow size, but the user perceives
@@ -368,7 +416,7 @@ function compactSnappedBounds(expanded = compactHoverExpanded) {
   // The BrowserWindow extends BUBBLE_PADDING past the edge so the gutter
   // (where the shadow renders) overhangs into the screen bezel area.
   const { screen } = require("electron");
-  const size = expanded ? COMPACT_HOVER_BOUNDS : MODE_BOUNDS.compact;
+  const size = compactBounds(expanded);
   const current = mainWindow.getBounds();
   const display = screen.getDisplayMatching(current);
   const workArea = display.workArea;
@@ -534,15 +582,15 @@ function clearCompactCollapseTimer() {
   }
 }
 
-function clearDoneAttentionTimer() {
-  if (doneAttentionTimer) {
-    clearTimeout(doneAttentionTimer);
-    doneAttentionTimer = null;
+function clearStatusPopoutTimer() {
+  if (statusPopoutTimer) {
+    clearTimeout(statusPopoutTimer);
+    statusPopoutTimer = null;
   }
 }
 
 function clearDoneAttention() {
-  clearDoneAttentionTimer();
+  clearStatusPopoutTimer();
   setAttentionState(null);
 }
 
@@ -785,22 +833,41 @@ function setIslandMode(mode) {
   return { mode: currentMode };
 }
 
-function triggerDoneAttention() {
+// Unified popout — bubble glides out from peek to its full snapped capsule,
+// holds for a status-dependent window, then tucks back if the cursor is
+// elsewhere. Replaces the old triggerDoneAttention which only fired for the
+// `done` status; now any status change can flash the bubble briefly.
+//   - status === "done"  → DONE_ATTENTION_MS (10 min) + sets attention="done"
+//                           so the peek slit keeps pulsing until acked.
+//   - any other status   → STATUS_POPOUT_MS (4 s) brief auto-retract.
+// New status arriving while a popout is in flight cancels the prior timer
+// and restarts the cycle — including new-status-after-done, which clears a
+// stuck done attention so a fresh work cycle isn't masked by stale UI.
+function popoutForStatus(status) {
   if (!mainWindow || currentMode !== "compact" || !isSnapped()) {
     return { shown: false };
   }
 
-  clearDoneAttentionTimer();
+  clearStatusPopoutTimer();
+  // A non-done status superseding a held done attention: reset attention so
+  // the peek slit's done-glow doesn't bleed into the next cycle.
+  if (status !== "done" && attentionState === "done") {
+    setAttentionState(null);
+  }
+
   clearCompactCollapseTimer();
   isPeeking = false;
   compactHoverExpanded = true;
   compactHoverVisibleSince = Date.now();
-  setAttentionState("done");
+  if (status === "done") {
+    setAttentionState("done");
+  }
   animateWindowBounds(compactSnappedBounds(true), 190, sendHoverExpandedChanged);
   mainWindow.webContents.send("window:peek-changed", false);
 
-  doneAttentionTimer = setTimeout(() => {
-    doneAttentionTimer = null;
+  const tuckDelayMs = status === "done" ? DONE_ATTENTION_MS : STATUS_POPOUT_MS;
+  statusPopoutTimer = setTimeout(() => {
+    statusPopoutTimer = null;
 
     if (!mainWindow || currentMode !== "compact") {
       return;
@@ -814,13 +881,19 @@ function triggerDoneAttention() {
       return;
     }
 
+    if (status === "done") {
+      // Done timed out without acknowledgement — drop the attention glow so
+      // the next status arrival starts from a clean slate.
+      setAttentionState(null);
+    }
     compactHoverExpanded = false;
+    sendHoverExpandedChanged();
     if (isSnapped()) {
       enterPeek();
       return;
     }
     animateWindowBounds(targetBoundsForMode("compact"), 150);
-  }, DONE_ATTENTION_MS);
+  }, tuckDelayMs);
 
   return { shown: true };
 }
@@ -997,7 +1070,7 @@ function createWindow() {
     stopWindowPriorityGuard();
     stopPeekHoverPolling();
     clearCompactCollapseTimer();
-    clearDoneAttentionTimer();
+    clearStatusPopoutTimer();
     if (desktopStateWriteTimer) {
       clearTimeout(desktopStateWriteTimer);
       desktopStateWriteTimer = null;
@@ -1049,6 +1122,21 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Packaged builds (.exe / .dmg / etc.) embed the daemon in this same
+  // process so the user only ever launches one binary. In dev (`npm run
+  // desktop` paired with `npm run daemon`) we skip this branch — the
+  // standalone daemon is already binding 4317.
+  if (app.isPackaged) {
+    if (!process.env.CCC_DATA_DIR) {
+      process.env.CCC_DATA_DIR = path.join(app.getPath("userData"), "companion-data");
+    }
+    try {
+      require(path.join(__dirname, "..", "daemon", "src", "index.js"));
+    } catch (error) {
+      console.error("[clawdeck] embedded daemon failed to start:", error);
+    }
+  }
+
   createWindow();
 
   app.on("activate", () => {
@@ -1117,6 +1205,22 @@ ipcMain.handle("open:live", () => {
   return setIslandMode("live");
 });
 
+// Renderer reports the rendered .status-text width (px) after every status
+// change. Main updates the compact bubble's target capsule width and animates
+// the OS BrowserWindow to fit, so long status labels never get clipped by
+// the absolute-positioned controls strip on hover. No-op in expanded modes
+// — the resize takes effect the next time the bubble enters compact.
+ipcMain.handle("window:set-status-width", (_event, width) => {
+  const w = Number.isFinite(width) ? Math.max(0, Math.round(width)) : COMPACT_TEXT_W_MIN;
+  if (w === compactTextWidth) return { width: compactTextWidth };
+  compactTextWidth = w;
+  if (mainWindow && currentMode === "compact" && !isPeeking) {
+    const target = isSnapped() ? compactSnappedBounds() : targetBoundsForMode("compact");
+    animateWindowBounds(target, 220, scheduleDesktopStateSave);
+  }
+  return { width: compactTextWidth };
+});
+
 ipcMain.handle("window:peek-hover", () => {
   setCompactHover(true);
 });
@@ -1125,8 +1229,19 @@ ipcMain.handle("window:peek-unhover", () => {
   setCompactHover(false);
 });
 
+// Renderer fires this on every status change (any status worth showing).
+// Main routes to popoutForStatus which picks the right hold duration and
+// resets a stuck done attention if a new status supersedes it.
+ipcMain.handle("window:status-popout", (_event, payload) => {
+  const status = String(payload && payload.status || "");
+  if (!status) return { shown: false };
+  return popoutForStatus(status);
+});
+
+// Legacy alias — pre-status-popout renderers still call this; route to the
+// unified handler with status="done" so behaviour is unchanged.
 ipcMain.handle("window:done-attention", () => {
-  return triggerDoneAttention();
+  return popoutForStatus("done");
 });
 
 ipcMain.handle("window:ack-attention", () => {
@@ -1142,6 +1257,24 @@ ipcMain.handle("window:clear-attention", () => {
 ipcMain.handle("companion:get-enabled", () => readCompanionEnabled());
 
 ipcMain.handle("companion:set-enabled", (_event, enabled) => setCompanionEnabled(Boolean(enabled)));
+
+// Login-item / auto-start. Electron handles the platform-specific bits
+// (registry on Windows, LaunchAgents on macOS, .desktop on Linux) — we
+// just expose openAtLogin to the renderer's settings toggle. Args is
+// kept empty for now; if we want a `--minimized` boot mode later, add
+// it here and parse process.argv at startup.
+ipcMain.handle("app:get-auto-start", () => {
+  const settings = app.getLoginItemSettings();
+  return Boolean(settings.openAtLogin);
+});
+
+ipcMain.handle("app:set-auto-start", (_event, enabled) => {
+  app.setLoginItemSettings({
+    openAtLogin: Boolean(enabled),
+    args: [],
+  });
+  return Boolean(app.getLoginItemSettings().openAtLogin);
+});
 
 ipcMain.handle("window:set-hold", (_event, value) => {
   setHoldOpen(value);
