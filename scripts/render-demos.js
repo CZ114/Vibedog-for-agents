@@ -50,17 +50,21 @@ const OUT_DIR = path.join(PROJECT_ROOT, "media");
 // width — kept tight on simple sequences (status / themes are just the
 // bubble) so the file stays small, full record-frame on the spatial
 // sequences (edges / morph) so all 4 sides are visible.
+// `width` is the encoded APNG width (preserves aspect). `fps` lets us trade
+// motion-smoothness for file size on the dense sequences — cards / morph
+// have lots of pixel churn (text changes, panel scrolls, cursor + ripple
+// + heatmap highlight + button state flicks) so they balloon at 24 fps;
+// 18-20 fps + tighter width keeps them under GitHub's 10 MB inline limit.
 const SEQUENCES = [
-  { name: "status",   output: "hero-status.apng",   timeout: 18000, width: 480 },
-  { name: "themes",   output: "themes-cycle.apng",  timeout: 14000, width: 480 },
-  { name: "edges",    output: "edges-cycle.apng",   timeout: 22000, width: 720 },
-  { name: "approval", output: "approval-flow.apng", timeout: 12000, width: 540 },
-  { name: "cards",    output: "cards-review.apng", timeout: 22000, width: 540 },
-  { name: "morph",    output: "hero-morph.apng",    timeout: 26000, width: 720 },
+  { name: "status",   output: "hero-status.apng",   timeout: 18000, width: 480, fps: 24 },
+  { name: "themes",   output: "themes-cycle.apng",  timeout: 14000, width: 480, fps: 24 },
+  { name: "edges",    output: "edges-cycle.apng",   timeout: 22000, width: 640, fps: 24 },
+  { name: "approval", output: "approval-flow.apng", timeout: 12000, width: 520, fps: 24 },
+  { name: "cards",    output: "cards-review.apng",  timeout: 22000, width: 460, fps: 18 },
+  { name: "morph",    output: "hero-morph.apng",    timeout: 26000, width: 480, fps: 15 },
 ];
 
 const VIEWPORT = { width: 1130, height: 1174 };
-const FPS_OUT = 24;
 
 function checkFfmpeg() {
   const r = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
@@ -139,7 +143,7 @@ async function renderOne(browser, seq) {
       "-i", webmPath,
       "-vf",
       `crop=${cropRect.w}:${cropRect.h}:${cropRect.x}:${cropRect.y},` +
-      `fps=${FPS_OUT},scale=${seq.width}:-1:flags=lanczos`,
+      `fps=${seq.fps},scale=${seq.width}:-1:flags=lanczos`,
       "-plays", "0",
       "-pred", "mixed",
       outPath,

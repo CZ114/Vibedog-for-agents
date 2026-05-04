@@ -3,10 +3,16 @@
 > Floating Windows companion for Claude Code — approvals, status, and a daily knowledge-card review, all in one bubble that morphs like a liquid droplet between modes.
 
 <p align="center">
-  <img src="media/hero-morph.apng" alt="Bubble morphs from compact to Settings, drag-selects sessions in the heatmap, generates a fresh knowledge-card deck" width="480">
+  <img src="media/hero-status.apng" alt="Floating bubble cycling through Idle, Thinking, Running tool, Awaiting approval, Done — the orb tells you what Claude is doing at a glance" width="480">
 </p>
 
-> Pick sessions → Generate → review the fresh deck. The bubble morphs between every mode on a liquid droplet curve so the navigation reads as one motion.
+> The orb tells you what Claude is doing at a glance. No alt-tab.
+
+<p align="center">
+  <img src="media/edges-cycle.apng" alt="Bubble docks to right, top, left, bottom — and tucks behind each edge to a thin context slit when not in use" width="640">
+</p>
+
+> Drag it to any screen edge. When you're not looking at it, it tucks behind the edge to a 4-px context-percent slit — out of your way, still glanceable.
 
 > iOS planned. Internally still referred to as "Claude Code Companion" in protocol code and env vars (`CCC_*`) — same project.
 
@@ -32,6 +38,14 @@
 
 Transitions use a single liquid water-droplet morph — the OS window resize and the renderer's `border-radius` interpolate on a synchronized bouncy curve, so the bubble stretches rather than snapping.
 
+<p align="center">
+  <img src="media/approval-flow.apng" alt="Bash request lands → bubble auto-morphs to approval card → click Approve → bubble glides back to compact, status flashes Done" width="520">
+</p>
+
+<p align="center">
+  <img src="media/hero-morph.apng" alt="Settings → drag-select 5 days in the heatmap picker → Live → click Generate → 📚 fresh deck" width="480">
+</p>
+
 ---
 
 ## Knowledge Cards (Stage 1.5)
@@ -51,6 +65,10 @@ Generated locally. Companion pipes a redacted slice of `~/.claude/projects/` JSO
 
 First generation is gated by an opt-in consent modal explaining the data flow.
 
+<p align="center">
+  <img src="media/cards-review.apng" alt="Cards mode: Today's deck → Start review → answer correct + wrong, with verbatim source citations" width="460">
+</p>
+
 ---
 
 ## Themes
@@ -65,7 +83,7 @@ Four presets, every body-text contrast holds at WCAG-AA or better. Approve is al
 The swatch button on the controls strip cycles through them; the previews in Settings → Companion let you pick directly.
 
 <p align="center">
-  <img src="media/themes-cycle.gif" alt="Cycling through the four theme presets" width="540">
+  <img src="media/themes-cycle.apng" alt="Cycling through the four theme presets" width="480">
 </p>
 
 ---
