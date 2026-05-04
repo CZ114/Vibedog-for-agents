@@ -179,8 +179,10 @@ const STRINGS = {
     // ── Settings: companion ─────────────────────────────────
     "settings.companion.hook": "Approval hook",
     "settings.companion.autoStart": "Start with Windows",
-    "settings.companion.autoStartMeta": "launch Clawdeck when you sign in — bubble lands at its last position",
+    "settings.companion.autoStartMeta": "auto-launch when you sign in",
     "settings.companion.consent": "Cards consent",
+    "settings.companion.consentAccepted": "accepted {time} · Reset to revoke",
+    "settings.companion.consentPending": "not yet accepted — first generate will prompt",
     "settings.theme.meta": "click any preset to apply · the bubble's color button cycles through them in order",
     "settings.language.meta": "bubble UI language; cards generator prompt also follows this setting",
     "settings.language.en": "English",
@@ -360,10 +362,12 @@ const STRINGS = {
     // ── 设置：companion ──────────────────────────────
     "settings.companion.hook": "批准 hook",
     "settings.companion.autoStart": "开机自启",
-    "settings.companion.autoStartMeta": "登录 Windows 时自动拉起 Clawdeck — 气泡会落到上次的位置",
+    "settings.companion.autoStartMeta": "登录 Windows 时自动启动",
     "settings.companion.consent": "卡片同意书",
-    "settings.theme.meta": "点任意主题立即应用 · 浮岛上的颜色按钮按顺序循环切换",
-    "settings.language.meta": "浮岛 UI 语言；卡片生成器的提示词也跟随此设置",
+    "settings.companion.consentAccepted": "已同意 {time} · 重置可撤回",
+    "settings.companion.consentPending": "尚未同意 · 首次生成时会询问",
+    "settings.theme.meta": "点预设直接换 · 控制条色环按顺序循环",
+    "settings.language.meta": "UI + 卡片生成器一起切",
     "settings.language.en": "English",
     "settings.language.zh": "中文",
 

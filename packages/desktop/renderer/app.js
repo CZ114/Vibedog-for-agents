@@ -1897,8 +1897,8 @@ async function renderConsentMeta() {
   if (!els.consentStateMeta) return;
   const c = await fetchCardsConsent();
   els.consentStateMeta.textContent = c.given
-    ? `accepted ${formatTimeShort(c.givenAt)} · click Reset to revoke`
-    : "not yet accepted — first generate will prompt";
+    ? _t("settings.companion.consentAccepted", { time: formatTimeShort(c.givenAt) })
+    : _t("settings.companion.consentPending");
 }
 
 // ============================================================

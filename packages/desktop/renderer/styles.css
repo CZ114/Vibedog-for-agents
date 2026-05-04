@@ -2835,22 +2835,26 @@ body[data-peeking="true"] .live-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: 12px;
   min-height: 28px;
-  /* flex-wrap so the right-side control (segmented / slider / toggle)
-     drops below the label when the panel is too narrow for both —
-     prevents the label from being squeezed into a 60-px column where
-     the meta text wraps over itself across rows. */
-  flex-wrap: wrap;
+  /* No flex-wrap — controls (segmented / slider / toggle / button) stay
+     inline on the right. Long meta text clamps to 2 lines below instead
+     of wrapping the whole control to a new line, so rows stay aligned
+     across locales. */
 }
 .settings-row-text {
   display: flex;
   flex-direction: column;
-  /* Claim space first so meta text can sit on a line or two instead of
-     a vertical stack of single words. min-width: 0 still allows shrink
-     when really needed. */
-  flex: 1 1 180px;
+  flex: 1 1 auto;
   min-width: 0;
+}
+.settings-row-meta {
+  /* Cap at 2 lines so long Chinese / French / German metas don't double
+     the row's height. Excess clips with ellipsis. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .settings-row-label {
   font-size: 12.5px;
