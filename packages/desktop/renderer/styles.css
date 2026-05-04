@@ -61,9 +61,8 @@
   --bg-slate:         color-mix(in oklch, var(--accent-slate), transparent 82%);
 
   /* Direction-B easing + elevation tokens — Apple-style sheet curve and
-     bouncy spring-out for satellite chips. --ease-droplet matches the
-     overshoot main.js uses for the OS window resize so renderer + window
-     read as one motion. */
+     bouncy spring-out. --ease-droplet matches the overshoot main.js uses
+     for the OS window resize so renderer + window read as one motion. */
   --ease-sheet:    cubic-bezier(0.32, 0.72, 0, 1);
   --ease-pop:      cubic-bezier(0.34, 1.4, 0.64, 1);
   --ease-droplet:  cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -141,93 +140,6 @@ button {
   app-region: no-drag;
 }
 
-/* === Satellite approve/deny mini-bubbles ======================
-   When an approval lands, two chips "split" out of the bubble's bottom
-   edge into the SATELLITE_GUTTER (44 px reserved by main.js for
-   approval / question modes only). They sit BELOW .island so they
-   never cover the request panel content + never live in the drag region.
-   Hidden entirely in compact / cards / settings modes. */
-.satellites {
-  position: fixed;
-  bottom: 14px;       /* vertically centred in the satellite gutter below .island */
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0;
-  pointer-events: none;
-  z-index: 50;
-  /* Hidden by default — only approval / question modes show satellites. */
-  visibility: hidden;
-}
-/* Flip to top when bubble is snapped to screen bottom — see .island flip rule above. */
-body[data-snap-vertical="bottom"] .satellites {
-  bottom: auto;
-  top: 14px;
-}
-body[data-mode="approval"] .satellites,
-body[data-mode="question"] .satellites {
-  visibility: visible;
-}
-.satellite {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  background: var(--surface-2);
-  color: var(--ink-0);
-  box-shadow: 0 6px 18px oklch(0% 0 0 / 0.45), var(--shadow-inner-highlight);
-  /* Start fully collapsed onto the bubble's centre so the split
-     animation reads as "two chips emerging from one point". */
-  opacity: 0;
-  transform: translateX(0) scale(0.4);
-  transition:
-    opacity 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  pointer-events: none;
-  /* Belt-and-suspenders so Electron never treats the chip as draggable. */
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-.satellite-approve {
-  color: oklch(20% 0 0);
-  background: var(--accent-sage);
-}
-.satellite-deny {
-  color: oklch(20% 0 0);
-  background: var(--accent-rose);
-}
-.satellite:hover {
-  filter: brightness(1.1);
-  transform: scale(1.08) translateX(var(--sat-x, 0)) !important;
-}
-.satellite:active {
-  transform: scale(0.95) translateX(var(--sat-x, 0)) !important;
-}
-.satellites[data-active="true"] {
-  pointer-events: auto;
-}
-.satellites[data-active="true"] .satellite {
-  opacity: 1;
-  pointer-events: auto;
-}
-/* The split: approve drifts LEFT, deny drifts RIGHT. The CSS variable
-   --sat-x lets the hover/active styles read the resting offset so they
-   don't snap back to centre on interaction. 36 px ≈ chip half-width +
-   small gap so the two chips don't overlap visually. */
-.satellites[data-active="true"] .satellite-approve {
-  --sat-x: -36px;
-  transform: translateX(-36px) scale(1);
-}
-.satellites[data-active="true"] .satellite-deny {
-  --sat-x: 36px;
-  transform: translateX(36px) scale(1);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -278,24 +190,6 @@ body[data-mode="cards"]     .island,
 body[data-mode="settings"]  .island {
   border-radius: 22px;
 }
-/* Approval / question modes reserve a 44 px gutter at the bottom of the
-   window for the satellite chips (see main.js SATELLITE_GUTTER). The
-   .island shrinks accordingly so it doesn't paint over that gutter. */
-body[data-mode="approval"] .island,
-body[data-mode="question"] .island {
-  height: calc(100% - 24px - 44px);
-  margin-bottom: calc(12px + 44px);
-}
-
-/* Snap-to-bottom: the bubble's bottom edge sits on the screen edge, so a
-   gutter BELOW the bubble would render off-screen. Flip the gutter to the
-   TOP of the window — satellites move above the bubble. */
-body[data-snap-vertical="bottom"][data-mode="approval"] .island,
-body[data-snap-vertical="bottom"][data-mode="question"] .island {
-  margin-top: calc(12px + 44px);
-  margin-bottom: 12px;
-}
-
 body[data-mode="compact"] .island {
   background: var(--island-surface);
 }

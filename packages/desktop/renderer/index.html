@@ -12,19 +12,6 @@
   <script src="../../shared/i18n.js"></script>
 </head>
 <body data-mode="compact">
-  <!-- Satellite approve/deny chips. Hidden by default; when a pending
-       request arrives they "split" outward from the bubble's left/right
-       edges so the user can approve / deny without expanding. Live OUTSIDE
-       .island so they're visible in any bubble mode. -->
-  <div class="satellites" id="satellites" data-active="false" aria-hidden="true">
-    <button class="satellite satellite-approve" id="satelliteApprove" type="button" data-i18n-title="approval.action.approve" data-i18n-aria-label="bubble.satellite.approve">
-      <span class="satellite-glyph" aria-hidden="true">✓</span>
-    </button>
-    <button class="satellite satellite-deny" id="satelliteDeny" type="button" data-i18n-title="approval.action.deny" data-i18n-aria-label="bubble.satellite.deny">
-      <span class="satellite-glyph" aria-hidden="true">✕</span>
-    </button>
-  </div>
-
   <main class="island" data-status="idle">
     <span class="peek-context" aria-hidden="true">
       <span class="peek-context-fill"></span>

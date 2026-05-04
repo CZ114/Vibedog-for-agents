@@ -82,7 +82,7 @@ Hover the compact bubble to reveal the controls strip (left → right):
 - **⤢ Live monitor** — open the Live overlay (always opens, never collapses). Floating semi-transparent window with breathing pulse: Today's-deck mini-summary + 📚 Open Knowledge Cards entry + active Claude sessions.
 - **− Minimize** — collapse any expanded mode back to the compact island. (Doesn't minimize to the OS taskbar.)
 
-When a permission request lands, the bubble auto-jumps to the approval mode regardless of where you are. Two satellite ✓ / ✕ chips appear in the gutter below so you can decide without scrolling. Question requests show the same shell with a typed-answer form.
+When a permission request lands, the bubble auto-jumps to the approval mode regardless of where you are. Use the in-card Approve / Suggest / Deny row to decide. Question requests show the same shell with a typed-answer form.
 
 The bubble remembers its last position, compact/expanded mode, edge snap, and tucked slit state in `~/.claude-companion/desktop-state.json`. If your monitor layout changes, startup clamps the saved position back into the visible work area.
 

@@ -59,8 +59,6 @@ const STRINGS = {
     "bubble.settings": "Settings",
     "bubble.live": "Live monitor",
     "bubble.minimize": "Collapse to island",
-    "bubble.satellite.approve": "Approve pending request",
-    "bubble.satellite.deny": "Deny pending request",
 
     // ── Approval panel ──────────────────────────────────────
     "approval.eyebrow.approval": "approval",
@@ -240,8 +238,6 @@ const STRINGS = {
     "bubble.settings": "设置",
     "bubble.live": "实时监视",
     "bubble.minimize": "收回浮岛",
-    "bubble.satellite.approve": "批准当前请求",
-    "bubble.satellite.deny": "拒绝当前请求",
 
     // ── 批准面板 ────────────────────────────────────────
     "approval.eyebrow.approval": "批准",

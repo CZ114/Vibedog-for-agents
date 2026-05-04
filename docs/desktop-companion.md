@@ -172,7 +172,7 @@ Global hook installation is handled by `npm run setup-user-hooks`, which merges 
 
 The five non-compact modes the controls strip can open:
 
-- **Approval** — auto-entered when a `permission_request` lands. Tool name + risk pill + command preview + 2-row meta + horizontal Approve/Suggest/Deny row. Floating ✓ / ✕ satellite chips appear in the bottom gutter so the user can decide without scrolling. Auto-jumps to this mode from any other mode when a request arrives.
+- **Approval** — auto-entered when a `permission_request` lands. Tool name + risk pill + command preview + 2-row meta + horizontal Approve / Suggest / Deny row pinned at the bottom of the card. Auto-jumps to this mode from any other mode when a request arrives.
 - **Question** — same chrome, swaps the action row for an answer-form (multiple-choice options or "other answer" text input).
 - **Cards** (📚) — Today / History / Wrong-book / Record tabs. See [Knowledge Cards mode](#knowledge-cards-mode-stage-15) below.
 - **Settings** (⚙) — left rail nav + right panel; rail items: Knowledge cards / Storage / Export / Companion. The rail itself is collapsible (chevron at top); state persists.

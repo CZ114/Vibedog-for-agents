@@ -46,11 +46,6 @@ function setCompanionEnabled(enabled) {
 // gutter as long as the BrowserWindow opts out of thickFrame, mica, and
 // roundedCorners (see createWindow).
 const BUBBLE_PADDING = 12;
-// SATELLITE_GUTTER reserves vertical room BELOW the bubble for the
-// approve/deny floating chips. Only added to modes that actually show
-// the satellites (approval / question). The chips animate into this
-// gutter from the bubble's bottom edge.
-const SATELLITE_GUTTER = 44;
 const CAPSULE_BOUNDS = {
   compact: { width: 124, height: 42 },
   approval: { width: 360, height: 238 },
@@ -71,13 +66,10 @@ const COMPACT_HOVER_CAPSULE = { width: 224, height: 42 };
 function paddedBounds(b) {
   return { width: b.width + 2 * BUBBLE_PADDING, height: b.height + 2 * BUBBLE_PADDING };
 }
-function paddedBoundsWithSatellites(b) {
-  return { width: b.width + 2 * BUBBLE_PADDING, height: b.height + 2 * BUBBLE_PADDING + SATELLITE_GUTTER };
-}
 const MODE_BOUNDS = {
   compact: paddedBounds(CAPSULE_BOUNDS.compact),
-  approval: paddedBoundsWithSatellites(CAPSULE_BOUNDS.approval),
-  question: paddedBoundsWithSatellites(CAPSULE_BOUNDS.question),
+  approval: paddedBounds(CAPSULE_BOUNDS.approval),
+  question: paddedBounds(CAPSULE_BOUNDS.question),
   cards: paddedBounds(CAPSULE_BOUNDS.cards),
   settings: paddedBounds(CAPSULE_BOUNDS.settings),
   live: paddedBounds(CAPSULE_BOUNDS.live)

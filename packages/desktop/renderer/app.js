@@ -120,9 +120,6 @@ const els = {
   answerForm: document.getElementById("answerForm"),
   approvalActions: document.getElementById("approvalActions"),
   approveRequest: document.getElementById("approveRequest"),
-  satellites: document.getElementById("satellites"),
-  satelliteApprove: document.getElementById("satelliteApprove"),
-  satelliteDeny: document.getElementById("satelliteDeny"),
   suggestionList: document.getElementById("suggestionList"),
   denyRequest: document.getElementById("denyRequest"),
   openThemePicker: document.getElementById("openThemePicker"),
@@ -639,7 +636,7 @@ function renderStatus(status, detail, contextUsage) {
   // explicit on Companion itself, so the orb labels that — Claude Code's
   // underlying status (Done / Idle / etc.) is no longer the primary signal.
   // Approval / question modes keep using the request-status because the
-  // satellite chips already convey "do I need to decide?".
+  // in-card Approve / Deny row already conveys "decide now".
   let effectiveStatus = status;
   let effectiveLabel = null;
   let effectiveEmoji = null;
@@ -688,16 +685,6 @@ function renderSession() {
   renderStatus(status, detail, contextUsage);
 }
 
-// Show/hide the satellite approve+deny chips based on whether there's a
-// pending approval. Question-type requests get the satellites hidden —
-// they need a typed answer, not a binary decision.
-function renderSatelliteActions(request) {
-  if (!els.satellites) return;
-  const isApproval = request && !isQuestionRequest(request);
-  els.satellites.dataset.active = isApproval ? "true" : "false";
-  els.satellites.setAttribute("aria-hidden", isApproval ? "false" : "true");
-}
-
 function renderRequest() {
   const request = activeRequest();
   state.selectedAnswers = {};
@@ -711,7 +698,6 @@ function renderRequest() {
 
   if (!request) {
     els.activeRequest.hidden = true;
-    renderSatelliteActions(null);
     if (inOverview) {
       // Overview surfaces (cards/settings) have their own panel that's
       // already visible via CSS; just keep request-panel hidden.
@@ -748,7 +734,6 @@ function renderRequest() {
   // we *could* restore later, but for now the user dismisses + reopens
   // their previous surface manually.
   setMode(question ? "question" : "approval");
-  renderSatelliteActions(request);
 }
 
 function describeRule(rule) {
@@ -1367,22 +1352,6 @@ els.denyRequest.addEventListener("click", () => {
   }
   decide(requestId, "deny", "Denied from desktop companion");
 });
-
-// Satellite chips mirror the in-panel approve/deny so the user can decide
-// without expanding the bubble or scrolling. Same decide() call, same
-// audit trail — different click target.
-if (els.satelliteApprove) {
-  els.satelliteApprove.addEventListener("click", () => {
-    const requestId = currentRequestId();
-    if (requestId) decide(requestId, "allow", "Approved via satellite chip");
-  });
-}
-if (els.satelliteDeny) {
-  els.satelliteDeny.addEventListener("click", () => {
-    const requestId = currentRequestId();
-    if (requestId) decide(requestId, "deny", "Denied via satellite chip");
-  });
-}
 
 if (els.openCards) {
   els.openCards.addEventListener("click", () => window.companionDesktop.openCards());
