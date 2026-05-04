@@ -1480,8 +1480,8 @@ body[data-attention="done"] .status-emoji {
 
 /* ============================================================
    Knowledge Cards (Stage 1.5)
-   See docs/decisions/ADR-20260503-knowledge-cards.md and
-   docs/knowledge-cards-v1.html for the full design rationale.
+   See docs/decisions/ADR-20260503-knowledge-cards.md for the full
+   design rationale.
    ============================================================ */
 
 /* Mode visibility — only one of {request, cards, settings, live} renders */

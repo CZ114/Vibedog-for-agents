@@ -33,7 +33,7 @@ Build an ambient companion and approval layer for Claude Code:
 - [Development Setup](docs/dev-setup.md): how to run the daemon, hook, and smoke test.
 - [User Guide](docs/user-guide.md): day-to-day commands for daemon, hooks, and the floating companion.
 - [Desktop Companion](docs/desktop-companion.md): Electron floating window behavior and next steps.
-- [Design Language](docs/design-language.md): tokens, motion, and component recipes for any new UI work. Visual preview at [docs/design-language-v0.html](docs/design-language-v0.html).
+- [Design Language](docs/design-language.md): tokens, motion, and component recipes for any new UI work.
 
 ## Current Status
 

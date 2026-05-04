@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Claude Code Companion is an approval-loop layer for Claude Code on Windows. The eventual product is an iPhone companion. The repo currently sits at **Stage 1 complete + Stage 1.5 planned**:
 
 - Stage 0 (approval daemon + hooks) and Stage 1 (Electron desktop bubble for status / approvals) have shipped.
-- Stage 1.5 (Knowledge Cards — daily review of past Claude Code sessions) is the next stage; design captured in [docs/decisions/ADR-20260503-knowledge-cards.md](docs/decisions/ADR-20260503-knowledge-cards.md), mockups in [docs/knowledge-cards-v1.html](docs/knowledge-cards-v1.html).
+- Stage 1.5 (Knowledge Cards — daily review of past Claude Code sessions) **shipped 2026-05-04**; design captured in [docs/decisions/ADR-20260503-knowledge-cards.md](docs/decisions/ADR-20260503-knowledge-cards.md). UI mockup HTMLs + design-exploration files are gitignored — keep them locally if useful, they're not part of the running surface.
 - Stage 2 (desktop personality / pet) is **deferred** — re-evaluated only after Stage 1.5 ships.
 - Stages 3+ (iOS app, pairing, cloud relay) remain unbuilt.
 

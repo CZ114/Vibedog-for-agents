@@ -18,3 +18,13 @@ node_modules/
 
 # Private chat / scratch logs that shouldn't ship to public clones.
 conversationWith*.md
+
+# Design exploration / research artifacts — not loaded by the running app,
+# kept locally for reference but not shipped with the repo.
+docs/knowledge-cards-v*.html
+docs/ui-redesign-*.html
+docs/design-language-v*.html
+docs/桌面宠物开源项目技术栈调研报告.md
+
+# Local scratch directory
+.tmp/

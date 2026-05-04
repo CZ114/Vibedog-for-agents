@@ -82,7 +82,7 @@ Scope:
 - Answer form for `AskUserQuestion` (option pills + free-text fallback).
 - Pluggable on/off via `~/.claude-companion/disabled` flag file (Power button on the bubble + manual `type nul`).
 - Per-family learned context window in `~/.claude-companion/learned-context.json` (peak-overrun + compact-observed signals; never auto-demotes).
-- Design tokens, motion library, and component recipes codified in [docs/design-language.md](design-language.md) with a v0 visual preview at [docs/design-language-v0.html](design-language-v0.html).
+- Design tokens, motion library, and component recipes codified in [docs/design-language.md](design-language.md).
 - WebSocket first, HTTP polling fallback.
 
 Non-goals:

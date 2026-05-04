@@ -24,12 +24,14 @@ did I learn yesterday?" surface reuses all of that infrastructure.
 The two design iterations are preserved as static HTML mockups so future
 readers can see how the design evolved:
 
-- [docs/knowledge-cards-v0.html](../knowledge-cards-v0.html) — first sketch:
-  cards as a section embedded in the existing dashboard mode.
-- [docs/knowledge-cards-v1.html](../knowledge-cards-v1.html) — current spec:
-  cards as a dedicated mode, generation visualized in the controls strip,
-  Duolingo-style mechanics, learning-focus prompt prefix, difficulty tiers,
-  strict source attribution, empty-day fallback, markdown rendering + export.
+- `docs/knowledge-cards-v0.html` — first sketch: cards as a section
+  embedded in the existing dashboard mode. Gitignored; kept locally for
+  reference during the redesign.
+- `docs/knowledge-cards-v1.html` — current spec: cards as a dedicated
+  mode, generation visualized in the controls strip, Duolingo-style
+  mechanics, learning-focus prompt prefix, difficulty tiers, strict
+  source attribution, empty-day fallback, markdown rendering + export.
+  Gitignored; kept locally for reference.
 
 ## Decision
 
@@ -336,8 +338,7 @@ benefit without the friction.
 
 ## References
 
-- Mockup v0: [docs/knowledge-cards-v0.html](../knowledge-cards-v0.html)
-- Mockup v1: [docs/knowledge-cards-v1.html](../knowledge-cards-v1.html)
+- Mockup v0 / v1: `docs/knowledge-cards-v0.html` and `docs/knowledge-cards-v1.html` — gitignored, kept locally for reference.
 - Stage definition: [docs/stages.md](../stages.md) §"Stage 1.5"
 - Security policy reference: [docs/security.md](../security.md) §"Surface
   Data Policy"

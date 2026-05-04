@@ -197,9 +197,9 @@ Daily review surface — see [ADR-20260503-knowledge-cards](decisions/ADR-202605
 
 ## Visual Identity Policy
 
-Tokens, motion, and component recipes are codified in [docs/design-language.md](design-language.md). A standalone v0 preview lives at [docs/design-language-v0.html](design-language-v0.html) — open it in a browser to inspect every state side-by-side.
+Tokens, motion, and component recipes are codified in [docs/design-language.md](design-language.md).
 
-Three Stage-1.5 redesign explorations live at [docs/ui-redesign-A-liquid-capsule.html](ui-redesign-A-liquid-capsule.html), [docs/ui-redesign-B-layered-cards.html](ui-redesign-B-layered-cards.html), [docs/ui-redesign-C-spatial-tabs.html](ui-redesign-C-spatial-tabs.html) — direction B + the liquid morph from A is what shipped.
+Stage 1.5 design-exploration HTMLs (knowledge-cards mockups, ui-redesign A/B/C) are gitignored — kept locally during the redesign for reference, not shipped. Direction B + the liquid morph from A is what shipped.
 
 The current stage intentionally avoids a concrete mascot. Status emoji are product iconography (they encode state); they're not used as filler. Future personality work should use original, generated, or clearly licensed assets.
 

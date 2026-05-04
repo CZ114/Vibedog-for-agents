@@ -2003,7 +2003,6 @@ function sampleDeckPayload({ focus, difficulty, date }) {
       "\n" +
       "### 触及文件\n" +
       "\n" +
-      "- `docs/knowledge-cards-v1.html`\n" +
       "- `docs/decisions/ADR-20260503-knowledge-cards.md`\n" +
       "- `docs/stages.md`\n" +
       "- `CLAUDE.md`\n" +
