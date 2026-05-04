@@ -4,6 +4,18 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+// File-based debug log — packaged Electron eats stdout/stderr, so we
+// route key events to ~/.claude-companion/clawdeck-debug.log. Cheap
+// and self-rotating: truncated to last 200 lines on each launch.
+const DEBUG_LOG = path.join(os.homedir(), ".claude-companion", "clawdeck-debug.log");
+function debugLog(msg) {
+  try {
+    fs.mkdirSync(path.dirname(DEBUG_LOG), { recursive: true });
+    fs.appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`, "utf8");
+  } catch (_e) {}
+}
+debugLog(`main.js boot — argv=${JSON.stringify(process.argv)}`);
+
 // CLI hook-management modes — handled BEFORE we touch Electron's app
 // shell, so the .exe can act as a tiny utility for the NSIS installer +
 // uninstaller without flashing a window. Each branch exits the process.
@@ -19,14 +31,6 @@ function runHookCli({ uninstall }) {
     readSettings
   } = require("../../scripts/lib/claude-settings");
 
-  // Tell claude-settings.js to generate prod-mode commands pointing at
-  // THIS exe + the resources/ folder where extraResources unpacked the
-  // hook scripts. Falls back to dev mode if process.resourcesPath isn't
-  // available (running from `npm run desktop`, etc).
-  const ctx = process.resourcesPath && process.execPath
-    ? { exePath: process.execPath, resourcesPath: process.resourcesPath }
-    : null;
-
   let settings;
   try {
     settings = readSettings(USER_SETTINGS_PATH);
@@ -36,7 +40,7 @@ function runHookCli({ uninstall }) {
   }
 
   const before = JSON.stringify(settings, null, 2) + "\n";
-  const report = mergeManagedHooks(settings, { uninstall, ctx });
+  const report = mergeManagedHooks(settings, { uninstall });
   const after = JSON.stringify(settings, null, 2) + "\n";
 
   if (before !== after) {
@@ -52,6 +56,7 @@ function runHookCli({ uninstall }) {
       process.exit(1);
     }
   }
+
   console.log(
     `[clawdeck] hooks ${uninstall ? "uninstalled" : "installed"} · removed ${report.removedManagedHookEntries} · added ${report.addedHookEntries}`
   );
@@ -1290,6 +1295,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  debugLog(`whenReady fired — isPackaged=${app.isPackaged}`);
   // Packaged builds (.exe / .dmg / etc.) embed the daemon in this same
   // process so the user only ever launches one binary. In dev (`npm run
   // desktop` paired with `npm run daemon`) we skip this branch — the
@@ -1300,35 +1306,39 @@ app.whenReady().then(() => {
     }
     try {
       require(path.join(__dirname, "..", "daemon", "src", "index.js"));
+      debugLog("daemon required ok");
     } catch (error) {
+      debugLog(`daemon require FAILED: ${error.stack || error.message}`);
       console.error("[clawdeck] embedded daemon failed to start:", error);
     }
     // Self-heal: every packaged launch makes sure ~/.claude/settings.json
-    // has the correct managed hooks pointing at THIS exe. Catches:
-    //   - User installed Clawdeck for the first time → hooks injected.
-    //   - User uninstalled then reinstalled → fresh hook entries written.
-    //   - User wiped settings.json by hand → hooks restored.
-    //   - Old dev-mode hooks (pointing at a checked-out repo) → replaced
-    //     with prod ones that don't break when the repo moves/deletes.
+    // has the correct managed HTTP hooks. With HTTP hooks the URL is the
+    // only thing pointing back at us, so this idempotently rewrites our
+    // entries even when the user uninstalled+reinstalled, wiped settings
+    // by hand, or carried over legacy v1 command-style entries.
     try {
       const {
         USER_SETTINGS_PATH,
         mergeManagedHooks,
         readSettings
       } = require("../../scripts/lib/claude-settings");
-      const ctx = { exePath: process.execPath, resourcesPath: process.resourcesPath };
+      debugLog(`self-heal: claude-settings loaded; reading ${USER_SETTINGS_PATH}`);
       const settings = readSettings(USER_SETTINGS_PATH);
       const before = JSON.stringify(settings, null, 2) + "\n";
-      mergeManagedHooks(settings, { ctx });
+      mergeManagedHooks(settings);
       const after = JSON.stringify(settings, null, 2) + "\n";
       if (before !== after) {
         fs.mkdirSync(path.dirname(USER_SETTINGS_PATH), { recursive: true });
         const tmp = `${USER_SETTINGS_PATH}.clawdeck.tmp`;
         fs.writeFileSync(tmp, after, "utf8");
         fs.renameSync(tmp, USER_SETTINGS_PATH);
+        debugLog(`self-heal: settings.json updated, ${after.length} bytes`);
         console.log("[clawdeck] self-heal: refreshed Claude Code hook entries");
+      } else {
+        debugLog("self-heal: no change needed");
       }
     } catch (error) {
+      debugLog(`self-heal FAILED: ${error.stack || error.message}`);
       console.error(`[clawdeck] hook self-heal failed: ${error.message}`);
     }
   }

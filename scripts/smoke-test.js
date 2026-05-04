@@ -10,11 +10,15 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const PORT = 54317;
+const SMOKE_DATA_DIR = path.join(os.tmpdir(), "claude-code-companion-smoke-" + process.pid);
 const ENV = {
   ...process.env,
   CCC_PORT: String(PORT),
   CCC_APPROVAL_TIMEOUT_MS: "5000",
-  CCC_DATA_DIR: path.join(os.tmpdir(), "claude-code-companion-smoke-" + process.pid),
+  CCC_DATA_DIR: SMOKE_DATA_DIR,
+  // Override the disabled-flag path so flipping the switch in tests
+  // doesn't touch the user's real ~/.claude-companion/disabled.
+  CCC_COMPANION_DISABLED_FLAG: path.join(SMOKE_DATA_DIR, "disabled"),
   CCC_MODEL_CONTEXT_WINDOWS: JSON.stringify({
     "smoke-custom-model": 123456
   }),
@@ -186,31 +190,61 @@ function waitForWebSocketHello(token) {
   });
 }
 
-function runHook(scriptPath, input, extraEnv = {}) {
+// Post directly to the daemon's HTTP hook endpoint — same call shape
+// Claude Code uses for `"type":"http"` hooks, so this exercises the
+// production path without spawning a separate hook process.
+function postHook(endpoint, input, opts = {}) {
+  const payload = JSON.stringify(input);
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: ROOT,
-      env: { ...ENV, ...extraEnv },
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("exit", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Hook exited ${code}: ${stderr}`));
-        return;
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: PORT,
+        path: `/hook/${endpoint}`,
+        method: "POST",
+        timeout: opts.timeout || 30000,
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(payload)
+        }
+      },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`POST /hook/${endpoint} -> ${res.statusCode}: ${data}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(data));
+          } catch (_error) {
+            resolve(data);
+          }
+        });
       }
-      resolve(JSON.parse(stdout));
+    );
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`POST /hook/${endpoint} timed out after ${opts.timeout || 30000}ms`));
     });
-    child.stdin.end(JSON.stringify(input));
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
   });
+}
+
+function setCompanionDisabled(on) {
+  const flagPath = ENV.CCC_COMPANION_DISABLED_FLAG;
+  fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+  if (on) {
+    fs.writeFileSync(flagPath, "1", "utf8");
+  } else if (fs.existsSync(flagPath)) {
+    fs.unlinkSync(flagPath);
+  }
 }
 
 function runCli(scriptPath, args = []) {
@@ -244,11 +278,16 @@ async function pendingCount() {
   return pending.requests.length;
 }
 
-function countHookEntries(settings, eventName, scriptName) {
+// Counts entries that own a managed HTTP hook for the given endpoint.
+// Accepts either a script name like "event.js" (legacy callsite) or an
+// endpoint slug like "event" so existing assertions keep reading well.
+function countHookEntries(settings, eventName, endpointOrScript) {
+  const endpoint = String(endpointOrScript || "").replace(/\.js$/, "");
   const entries = (settings.hooks && settings.hooks[eventName]) || [];
   return entries.filter((entry) => {
     return Array.isArray(entry.hooks) && entry.hooks.some((hook) => {
-      return String(hook.command || "").replace(/\\/g, "/").includes(`/packages/hooks/${scriptName}`);
+      if (!hook || hook.type !== "http") return false;
+      return String(hook.url || "").endsWith(`/hook/${endpoint}`);
     });
   }).length;
 }
@@ -426,72 +465,70 @@ async function main() {
     await waitForHealth();
     await verifySetupHooksCli();
 
-    const bypassPrePendingBefore = await pendingCount();
-    const bypassPreOutput = await runHook(
-      "packages/hooks/pre-tool-use.js",
-      {
-        session_id: "sess_smoke_bypass_pre",
-        transcript_path: "C:/tmp/transcript-bypass-pre.jsonl",
+    // Companion-disabled flag: when ~/.claude-companion/disabled exists,
+    // the daemon must return noop decisions for every hook endpoint and
+    // skip session-state recording — Claude Code falls back to its
+    // native prompt without going through us.
+    setCompanionDisabled(true);
+    try {
+      const disabledPrePendingBefore = await pendingCount();
+      const disabledPreOutput = await postHook("pre-tool-use", {
+        session_id: "sess_smoke_disabled_pre",
+        transcript_path: "C:/tmp/transcript-disabled-pre.jsonl",
         cwd: ROOT,
         hook_event_name: "PreToolUse",
         tool_name: "AskUserQuestion",
         tool_input: {
           questions: [
             {
-              question: "Bypass this question?",
-              header: "Bypass",
+              question: "Disabled question?",
+              header: "Disabled",
               options: [{ label: "Yes" }],
               multiSelect: false
             }
           ]
         }
-      },
-      { CCC_BYPASS_APPROVAL_HOOK: "true" }
-    );
-    if (!bypassPreOutput.suppressOutput || bypassPreOutput.hookSpecificOutput) {
-      throw new Error("Expected PreToolUse bypass to return a no-op hook output");
-    }
-    if ((await pendingCount()) !== bypassPrePendingBefore) {
-      throw new Error("Expected PreToolUse bypass not to create a pending request");
-    }
+      });
+      if (!disabledPreOutput.suppressOutput || disabledPreOutput.hookSpecificOutput) {
+        throw new Error("Expected disabled-flag PreToolUse to return noop");
+      }
+      if ((await pendingCount()) !== disabledPrePendingBefore) {
+        throw new Error("Expected disabled-flag PreToolUse not to create a pending request");
+      }
 
-    const bypassPermissionPendingBefore = await pendingCount();
-    const bypassPermissionOutput = await runHook(
-      "packages/hooks/permission-request.js",
-      {
-        session_id: "sess_smoke_bypass_permission",
-        transcript_path: "C:/tmp/transcript-bypass-permission.jsonl",
+      const disabledPermissionPendingBefore = await pendingCount();
+      const disabledPermissionOutput = await postHook("permission-request", {
+        session_id: "sess_smoke_disabled_permission",
+        transcript_path: "C:/tmp/transcript-disabled-permission.jsonl",
         cwd: ROOT,
         permission_mode: "default",
         hook_event_name: "PermissionRequest",
         tool_name: "Bash",
-        tool_input: {
-          command: "npm run lint"
-        }
-      },
-      { CCC_BYPASS_APPROVAL_HOOK: "true" }
-    );
-    if (!bypassPermissionOutput.suppressOutput || bypassPermissionOutput.hookSpecificOutput) {
-      throw new Error("Expected PermissionRequest bypass to return a no-op hook output");
-    }
-    if ((await pendingCount()) !== bypassPermissionPendingBefore) {
-      throw new Error("Expected PermissionRequest bypass not to create a pending request");
-    }
+        tool_input: { command: "npm run lint" }
+      });
+      if (!disabledPermissionOutput.suppressOutput || disabledPermissionOutput.hookSpecificOutput) {
+        throw new Error("Expected disabled-flag PermissionRequest to return noop");
+      }
+      if ((await pendingCount()) !== disabledPermissionPendingBefore) {
+        throw new Error("Expected disabled-flag PermissionRequest not to create a pending request");
+      }
 
-    await runHook(
-      "packages/hooks/event.js",
-      {
+      const disabledEventOutput = await postHook("event", {
         session_id: "sess_smoke_status_disabled",
         transcript_path: "C:/tmp/transcript-status-disabled.jsonl",
         cwd: ROOT,
         hook_event_name: "UserPromptSubmit",
         prompt: "This status should not be recorded"
-      },
-      { CCC_DISABLE_STATUS_HOOK: "true" }
-    );
-    const disabledSessions = await request("GET", "/sessions");
-    if (disabledSessions.sessions.some((item) => item.sessionId === "sess_smoke_status_disabled")) {
-      throw new Error("Expected disabled status hook not to create a session state");
+      });
+      if (!disabledEventOutput.suppressOutput) {
+        throw new Error("Expected disabled-flag event hook to return noop");
+      }
+      const disabledSessions = await request("GET", "/sessions");
+      if (disabledSessions.sessions.some((item) => item.sessionId === "sess_smoke_status_disabled")) {
+        throw new Error("Expected disabled-flag event not to create a session state");
+      }
+    } finally {
+      setCompanionDisabled(false);
     }
 
     const approvalPage = await request("GET", "/");
@@ -525,7 +562,7 @@ async function main() {
       throw new Error("Expected authenticated WebSocket hello for paired device");
     }
 
-    const promptHookOutput = await runHook("packages/hooks/event.js", {
+    const promptHookOutput = await postHook("event", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
       cwd: ROOT,
@@ -545,7 +582,7 @@ async function main() {
     writeTranscriptUsage(oneMillionTranscript, "smoke-context-model[1m]", {
       input_tokens: 100000
     });
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_context_1m",
       transcript_path: oneMillionTranscript,
       cwd: ROOT,
@@ -564,7 +601,7 @@ async function main() {
     writeTranscriptUsage(overrideTranscript, "smoke-custom-model-beta", {
       input_tokens: 12345
     });
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_context_override",
       transcript_path: overrideTranscript,
       cwd: ROOT,
@@ -579,7 +616,7 @@ async function main() {
       throw new Error("Expected context window source to report model-override");
     }
 
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
       cwd: ROOT,
@@ -591,7 +628,7 @@ async function main() {
     });
     await waitForSessionStatus("sess_smoke_status", "running_tool");
 
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
       cwd: ROOT,
@@ -606,7 +643,7 @@ async function main() {
     });
     await waitForSessionStatus("sess_smoke_status", "thinking");
 
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
       cwd: ROOT,
@@ -615,7 +652,7 @@ async function main() {
     });
     await waitForSessionStatus("sess_smoke_status", "waiting");
 
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_status",
       transcript_path: "C:/tmp/transcript-status.jsonl",
       cwd: ROOT,
@@ -623,7 +660,7 @@ async function main() {
     });
     await waitForSessionStatus("sess_smoke_status", "done");
 
-    await runHook("packages/hooks/event.js", {
+    await postHook("event", {
       session_id: "sess_smoke_status_failure",
       transcript_path: "C:/tmp/transcript-status-failure.jsonl",
       cwd: ROOT,
@@ -636,7 +673,7 @@ async function main() {
     });
     await waitForSessionStatus("sess_smoke_status_failure", "failed");
 
-    const hookPromise = runHook("packages/hooks/pre-tool-use.js", {
+    const hookPromise = postHook("pre-tool-use", {
       session_id: "sess_smoke",
       transcript_path: "C:/tmp/transcript.jsonl",
       cwd: ROOT,
@@ -666,7 +703,7 @@ async function main() {
       throw new Error(`Expected allow decision, received ${decision}`);
     }
 
-    const permissionHookPromise = runHook("packages/hooks/permission-request.js", {
+    const permissionHookPromise = postHook("permission-request", {
       session_id: "sess_smoke_native",
       transcript_path: "C:/tmp/transcript-native.jsonl",
       cwd: ROOT,
@@ -709,7 +746,7 @@ async function main() {
       throw new Error("Expected PermissionRequest updatedPermissions for always_allow");
     }
 
-    const powershellPermissionHookPromise = runHook("packages/hooks/permission-request.js", {
+    const powershellPermissionHookPromise = postHook("permission-request", {
       session_id: "sess_smoke_native_powershell",
       transcript_path: "C:/tmp/transcript-native-powershell.jsonl",
       cwd: ROOT,
@@ -757,7 +794,7 @@ async function main() {
       throw new Error("Expected PowerShell PermissionRequest allow decision");
     }
 
-    const questionHookPromise = runHook("packages/hooks/pre-tool-use.js", {
+    const questionHookPromise = postHook("pre-tool-use", {
       session_id: "sess_smoke_question",
       transcript_path: "C:/tmp/transcript-question.jsonl",
       cwd: ROOT,
@@ -1409,7 +1446,7 @@ async function verifyTranscriptIndex() {
 
   // Send a status hook that includes the transcript path. The daemon's
   // updateSessionStateFromHook should record it into the index.
-  await runHook("packages/hooks/event.js", {
+  await postHook("event", {
     hook_event_name: "PostToolUse",
     session_id: "sess_smoke_transcript",
     transcript_path: fakeTranscript,

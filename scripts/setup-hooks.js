@@ -2,8 +2,12 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  CLAWDECK_VERSION_FIELD,
+  CLAWDECK_HOOK_VERSION,
+  hookEntryContainsManagedScript
+} = require("./lib/claude-settings");
 
-const ROOT = path.resolve(__dirname, "..");
 const SETTINGS_RELATIVE_PATH = path.join(".claude", "settings.local.json");
 // PowerShell is a Windows-only Claude Code tool — including it in `permissions`
 // or as a hook matcher on macOS/Linux makes Claude Code error on every prompt
@@ -12,27 +16,20 @@ const SHELL_TOOLS = process.platform === "win32" ? ["Bash", "PowerShell"] : ["Ba
 const ASK_RULES = SHELL_TOOLS;
 const SHELL_MATCHER = SHELL_TOOLS.join("|");
 const DENY_RULES = ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"];
-const MANAGED_SCRIPT_NAMES = ["event.js", "pre-tool-use.js", "permission-request.js"];
+const DEFAULT_PORT = Number(process.env.CCC_PORT || 4317);
+const DEFAULT_HOST = process.env.CCC_HOST || "127.0.0.1";
 
 function usage() {
   console.error("Usage: node scripts/setup-hooks.js <target-repo> [--dry-run] [--status-only|--approval-only|--disable]");
   console.error("Example: npm run setup-hooks -- D:\\Imperial\\individual\\week15");
 }
 
-function normalizeForCommand(filePath) {
-  return filePath.replace(/\\/g, "/");
-}
-
-function hookCommand(relativeScriptPath) {
-  const scriptPath = normalizeForCommand(path.join(ROOT, relativeScriptPath));
-  return `node "${scriptPath}"`;
-}
-
-function commandHook(relativeScriptPath, timeout, statusMessage) {
+function httpHook(endpoint, timeout, statusMessage) {
   const hook = {
-    type: "command",
+    type: "http",
+    url: `http://${DEFAULT_HOST}:${DEFAULT_PORT}/hook/${endpoint}`,
     timeout,
-    command: hookCommand(relativeScriptPath)
+    [CLAWDECK_VERSION_FIELD]: CLAWDECK_HOOK_VERSION
   };
 
   if (statusMessage) {
@@ -45,14 +42,10 @@ function commandHook(relativeScriptPath, timeout, statusMessage) {
 function desiredHookConfig(options = {}) {
   const installStatus = options.installStatus !== false;
   const installApproval = options.installApproval !== false;
-  const eventHook = commandHook("packages/hooks/event.js", 10);
-  const answerHook = commandHook(
-    "packages/hooks/pre-tool-use.js",
-    60,
-    "Waiting for Claude Code Companion answer"
-  );
-  const permissionHook = commandHook(
-    "packages/hooks/permission-request.js",
+  const eventHook = httpHook("event", 10);
+  const answerHook = httpHook("pre-tool-use", 60, "Waiting for Claude Code Companion answer");
+  const permissionHook = httpHook(
+    "permission-request",
     60,
     "Waiting for Claude Code Companion approval"
   );
@@ -60,47 +53,19 @@ function desiredHookConfig(options = {}) {
   const config = {};
 
   if (installStatus) {
-    config.UserPromptSubmit = [
-      {
-        hooks: [eventHook]
-      }
-    ];
-    config.PostToolUse = [
-      {
-        matcher: "*",
-        hooks: [eventHook]
-      }
-    ];
-    config.PostToolUseFailure = [
-      {
-        matcher: "*",
-        hooks: [eventHook]
-      }
-    ];
-    config.Notification = [
-      {
-        hooks: [eventHook]
-      }
-    ];
-    config.Stop = [
-      {
-        hooks: [eventHook]
-      }
-    ];
+    config.UserPromptSubmit = [{ hooks: [eventHook] }];
+    config.PostToolUse = [{ matcher: "*", hooks: [eventHook] }];
+    config.PostToolUseFailure = [{ matcher: "*", hooks: [eventHook] }];
+    config.Notification = [{ hooks: [eventHook] }];
+    config.Stop = [{ hooks: [eventHook] }];
   }
 
   const preToolUseEntries = [];
   if (installStatus) {
-    preToolUseEntries.push({
-      matcher: "*",
-      hooks: [eventHook]
-    });
+    preToolUseEntries.push({ matcher: "*", hooks: [eventHook] });
   }
   if (installApproval) {
-    preToolUseEntries.push({
-      matcher: "AskUserQuestion",
-      hooks: [answerHook]
-    });
+    preToolUseEntries.push({ matcher: "AskUserQuestion", hooks: [answerHook] });
   }
   if (preToolUseEntries.length) {
     config.PreToolUse = preToolUseEntries;
@@ -108,10 +73,7 @@ function desiredHookConfig(options = {}) {
 
   if (installApproval) {
     config.PermissionRequest = [
-      {
-        matcher: SHELL_MATCHER,
-        hooks: [permissionHook]
-      }
+      { matcher: SHELL_MATCHER, hooks: [permissionHook] }
     ];
   }
 
@@ -153,20 +115,6 @@ function addUniqueStrings(target, values) {
   return added;
 }
 
-function hookEntryContainsManagedScript(entry) {
-  if (!entry || typeof entry !== "object" || !Array.isArray(entry.hooks)) {
-    return false;
-  }
-
-  return entry.hooks.some((hook) => {
-    const command = String((hook && hook.command) || "");
-    const normalized = command.replace(/\\/g, "/");
-    return MANAGED_SCRIPT_NAMES.some((scriptName) => {
-      return normalized.includes(`/packages/hooks/${scriptName}`) || normalized.includes(`\\packages\\hooks\\${scriptName}`);
-    });
-  });
-}
-
 function mergeSettings(settings, options = {}) {
   const report = {
     addedAskRules: 0,
@@ -188,14 +136,19 @@ function mergeSettings(settings, options = {}) {
   }
 
   const desired = options.disable ? {} : desiredHookConfig(options);
-  const allManagedEvents = Object.keys(desiredHookConfig({ installStatus: true, installApproval: true }));
-  for (const eventName of allManagedEvents) {
-    if (!Array.isArray(settings.hooks[eventName])) {
-      continue;
+  // Scrub managed entries from EVERY event currently in the file (not just
+  // events we want to install) — picks up legacy v1 command hooks even if
+  // they live under events the new config no longer owns.
+  for (const eventName of Object.keys(settings.hooks)) {
+    if (!Array.isArray(settings.hooks[eventName])) continue;
+    const before = settings.hooks[eventName].length;
+    settings.hooks[eventName] = settings.hooks[eventName].filter(
+      (entry) => !hookEntryContainsManagedScript(entry)
+    );
+    report.removedManagedHookEntries += before - settings.hooks[eventName].length;
+    if (!settings.hooks[eventName].length) {
+      delete settings.hooks[eventName];
     }
-    const originalLength = settings.hooks[eventName].length;
-    settings.hooks[eventName] = settings.hooks[eventName].filter((entry) => !hookEntryContainsManagedScript(entry));
-    report.removedManagedHookEntries += originalLength - settings.hooks[eventName].length;
   }
 
   for (const [eventName, entries] of Object.entries(desired)) {
@@ -207,6 +160,10 @@ function mergeSettings(settings, options = {}) {
       settings.hooks[eventName].push(entry);
       report.addedHookEntries += 1;
     }
+  }
+
+  if (!Object.keys(settings.hooks).length) {
+    delete settings.hooks;
   }
 
   return report;

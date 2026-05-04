@@ -12,9 +12,6 @@
   "main": "packages/desktop/main.js",
   "scripts": {
     "daemon": "node packages/daemon/src/index.js",
-    "hook:event": "node packages/hooks/event.js",
-    "hook:pre-tool-use": "node packages/hooks/pre-tool-use.js",
-    "hook:permission-request": "node packages/hooks/permission-request.js",
     "approve": "node scripts/decide.js approve",
     "deny": "node scripts/decide.js deny",
     "answer": "node scripts/decide.js answer",
@@ -40,27 +37,12 @@
     },
     "files": [
       "packages/**/*",
+      "scripts/lib/**/*",
       "package.json",
+      "!packages/hooks/**",
       "!**/*.{md,test.js,spec.js}",
       "!**/.{git,idea,vscode}",
       "!**/{__tests__,test,tests,coverage,docs,examples}"
-    ],
-    "extraResources": [
-      {
-        "from": "packages/hooks",
-        "to": "packages/hooks",
-        "filter": ["**/*.js"]
-      },
-      {
-        "from": "packages/shared",
-        "to": "packages/shared",
-        "filter": ["**/*.js"]
-      },
-      {
-        "from": "scripts/lib",
-        "to": "scripts/lib",
-        "filter": ["**/*.js"]
-      }
     ],
     "afterPack": "scripts/after-pack.js",
     "win": {

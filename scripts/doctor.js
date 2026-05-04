@@ -5,10 +5,10 @@ const http = require("node:http");
 const path = require("node:path");
 const { COMPANION_DISABLED_FLAG } = require("../packages/shared/protocol");
 const {
-  ROOT,
+  CLAWDECK_HOOK_VERSION,
+  CLAWDECK_VERSION_FIELD,
   USER_SETTINGS_PATH,
   desiredUserHooks,
-  extractQuotedNodeScript,
   findManagedHookEntries,
   projectSettingsPaths,
   readSettings
@@ -94,9 +94,9 @@ function healthCheck() {
   });
 }
 
-function hookScriptName(command) {
-  const scriptPath = extractQuotedNodeScript(command);
-  return scriptPath ? path.basename(scriptPath) : null;
+function hookEndpointFromUrl(url) {
+  const match = String(url || "").match(/\/hook\/([a-z-]+)$/);
+  return match ? match[1] : null;
 }
 
 function hasDesiredEntry(settings, eventName, desiredEntry) {
@@ -106,14 +106,16 @@ function hasDesiredEntry(settings, eventName, desiredEntry) {
   const desiredMatcher = Object.prototype.hasOwnProperty.call(desiredEntry, "matcher")
     ? String(desiredEntry.matcher)
     : null;
-  const desiredScript = hookScriptName(desiredEntry.hooks && desiredEntry.hooks[0] && desiredEntry.hooks[0].command);
+  const desiredEndpoint = hookEndpointFromUrl(desiredEntry.hooks && desiredEntry.hooks[0] && desiredEntry.hooks[0].url);
 
   return entries.some((entry) => {
     const entryMatcher = entry && Object.prototype.hasOwnProperty.call(entry, "matcher")
       ? String(entry.matcher)
       : null;
     const hooks = Array.isArray(entry && entry.hooks) ? entry.hooks : [];
-    return entryMatcher === desiredMatcher && hooks.some((hook) => hookScriptName(hook && hook.command) === desiredScript);
+    return entryMatcher === desiredMatcher && hooks.some((hook) => {
+      return hook && hook.type === "http" && hookEndpointFromUrl(hook.url) === desiredEndpoint;
+    });
   });
 }
 
@@ -149,24 +151,6 @@ async function main() {
     ? result("pass", "Node.js", `v${process.versions.node}`)
     : result("fail", "Node.js", `v${process.versions.node}; Node 20+ is required`));
 
-  results.push(fs.existsSync(ROOT)
-    ? result("pass", "Repo root", ROOT)
-    : result("fail", "Repo root", `missing: ${ROOT}`));
-
-  const requiredScripts = [
-    "packages/hooks/event.js",
-    "packages/hooks/pre-tool-use.js",
-    "packages/hooks/permission-request.js",
-    "packages/daemon/src/index.js",
-    "packages/desktop/main.js"
-  ];
-  for (const relativePath of requiredScripts) {
-    const absolutePath = path.join(ROOT, relativePath);
-    results.push(fs.existsSync(absolutePath)
-      ? result("pass", relativePath, "found")
-      : result("fail", relativePath, "missing"));
-  }
-
   let userSettings = {};
   if (!fs.existsSync(options.settingsPath)) {
     results.push(result("fail", "User Claude settings", `missing: ${options.settingsPath}`));
@@ -181,7 +165,7 @@ async function main() {
 
   const managedEntries = findManagedHookEntries(userSettings);
   results.push(managedEntries.length
-    ? result("pass", "Global Companion hooks", `${managedEntries.length} managed hook command(s) found`)
+    ? result("pass", "Global Companion hooks", `${managedEntries.length} managed hook(s) found`)
     : result("fail", "Global Companion hooks", "not installed; run npm run setup-user-hooks"));
 
   const missingCoverage = checkDesiredHookCoverage(userSettings);
@@ -189,15 +173,18 @@ async function main() {
     ? result("fail", "Global hook coverage", `missing: ${missingCoverage.join(", ")}`)
     : result("pass", "Global hook coverage", "all expected events present"));
 
-  for (const entry of managedEntries) {
-    const scriptPath = extractQuotedNodeScript(entry.command);
-    if (!scriptPath) {
-      results.push(result("fail", `Hook command ${entry.eventName}`, `cannot parse node script: ${entry.command}`));
-      continue;
-    }
-    results.push(fs.existsSync(scriptPath)
-      ? result("pass", `Hook path ${path.basename(scriptPath)}`, scriptPath)
-      : result("fail", `Hook path ${path.basename(scriptPath)}`, `missing: ${scriptPath}`));
+  const stale = managedEntries.filter((entry) => {
+    return entry.version != null && Number(entry.version) < CLAWDECK_HOOK_VERSION;
+  });
+  if (stale.length) {
+    results.push(result("warn", "Hook version", `${stale.length} hook(s) older than v${CLAWDECK_HOOK_VERSION} — re-run setup-user-hooks to upgrade`));
+  } else {
+    results.push(result("pass", "Hook version", `all entries at v${CLAWDECK_HOOK_VERSION} (${CLAWDECK_VERSION_FIELD})`));
+  }
+
+  const legacy = managedEntries.filter((entry) => entry.type === "command");
+  if (legacy.length) {
+    results.push(result("warn", "Legacy command hooks", `${legacy.length} v1 command-style hook(s) — re-run setup-user-hooks to migrate`));
   }
 
   if (fs.existsSync(COMPANION_DISABLED_FLAG)) {

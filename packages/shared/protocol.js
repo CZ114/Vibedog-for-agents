@@ -4,11 +4,17 @@ const path = require("node:path");
 
 const PROTOCOL_VERSION = 1;
 
-// Single global on/off switch for the Companion. Presence of this file means
-// every hook returns noop and Claude Code falls back to its native prompts.
-// The desktop bubble's power button toggles this file; users can also touch
-// or remove it manually.
-const COMPANION_DISABLED_FLAG = path.join(os.homedir(), ".claude-companion", "disabled");
+// Single global on/off switch for the Companion. Presence of this file
+// makes the daemon return a noop decision for permission hooks (and
+// skips state recording for status hooks) so Claude Code falls back to
+// its native prompts. The desktop bubble's power button toggles this
+// file; users can also touch or remove it manually.
+//
+// CCC_COMPANION_DISABLED_FLAG overrides the path — only used by the
+// smoke test so it can flip the flag in a temp dir without touching
+// the user's real ~/.claude-companion/.
+const COMPANION_DISABLED_FLAG = process.env.CCC_COMPANION_DISABLED_FLAG ||
+  path.join(os.homedir(), ".claude-companion", "disabled");
 
 function isCompanionDisabled() {
   try {

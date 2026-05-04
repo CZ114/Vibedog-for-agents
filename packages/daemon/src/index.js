@@ -6,9 +6,11 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   PROTOCOL_VERSION,
+  claudeNoopDecision,
   claudePermissionRequestDecision,
   claudePreToolUseDecision,
   createId,
+  isCompanionDisabled,
   jsonResponse,
   normalizeDecision,
   nowIso,
@@ -991,6 +993,15 @@ async function handlePreToolUse(req, res) {
   }
 
   const hookInput = await readJsonBody(req);
+
+  // Power-button toggle (~/.claude-companion/disabled). When the user
+  // pauses Companion, return a noop so Claude Code falls back to its
+  // native prompt instead of waiting on us.
+  if (isCompanionDisabled()) {
+    jsonResponse(res, 200, claudeNoopDecision());
+    return;
+  }
+
   const request = makePermissionRequest(hookInput, "pre_tool_use");
 
   audit({
@@ -1064,6 +1075,12 @@ async function handlePermissionRequestHook(req, res) {
   }
 
   const hookInput = await readJsonBody(req);
+
+  if (isCompanionDisabled()) {
+    jsonResponse(res, 200, claudeNoopDecision());
+    return;
+  }
+
   const request = makePermissionRequest(hookInput, "permission_request");
 
   audit({
@@ -1091,13 +1108,18 @@ async function handleHookEvent(req, res) {
   }
 
   const hookInput = await readJsonBody(req);
-  const status = statusForHookInput(hookInput);
-  const state = updateSessionStateFromHook(hookInput, status);
 
-  jsonResponse(res, 200, {
-    ok: true,
-    state
-  });
+  // Status hooks always succeed — they only feed session state, never
+  // gate Claude Code. So even when Companion is disabled we still
+  // accept the body (no-op response either way) so the iPhone app /
+  // bubble can show timeline data on resume. Records nothing when
+  // disabled though, to honor the off switch.
+  if (!isCompanionDisabled()) {
+    const status = statusForHookInput(hookInput);
+    updateSessionStateFromHook(hookInput, status);
+  }
+
+  jsonResponse(res, 200, claudeNoopDecision());
 }
 
 function permissionRequestDecision(request, approval) {
