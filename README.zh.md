@@ -141,39 +141,36 @@ npm run desktop             # 另一个 —— 气泡本体
 
 ### Kill-switch（紧急关闭）
 
-气泡上的 ⏻ 按钮等价于一个 sentinel 文件：
+气泡上的 ⏻ 按钮写一个 flag 文件，daemon 每次收到 hook 请求都会先看它：
 
 ```powershell
 type nul > %USERPROFILE%\.claude-companion\disabled    # 关
 del %USERPROFILE%\.claude-companion\disabled           # 开
 ```
 
-按 shell 的临时旁路（影响下次在那个 shell 里启动的 Claude Code）：
-
-```powershell
-$env:CCC_BYPASS_APPROVAL_HOOK = "true"   # 走 Claude Code 自带的审批 / 问答 UI
-$env:CCC_DISABLE_STATUS_HOOK  = "true"   # 不再记录状态 hook 事件
-```
+flag 在的时候，所有 `/hook/*` 端点直接返回 noop，Claude Code 自动 fallback 到原生提示 —— 不用卸载。
 
 ---
 
 ## Companion 装的几个 hook
 
-三个 Claude Code hook，由 `setup-user-hooks` 合并到 `~/.claude/settings.json`（项目级用 `setup-hooks -- <path>`）。任何时候用 `npm run doctor` 验证。
+三个 Claude Code hook，作为原生 `"type":"http"` 条目由 `setup-user-hooks` 合并到 `~/.claude/settings.json`（项目级用 `setup-hooks -- <path>`）。任何时候用 `npm run doctor` 验证。
 
 | Hook | 何时触发 | 做什么 | 模式 |
 |---|---|---|---|
-| `PreToolUse` | 每次工具调用前（Bash / Edit / Write / …） | 把 Claude 的权限请求路由到气泡的审批卡，approve / deny / answer 的结果作为 hook 退出码回给 Claude | **blocking** —— Claude 等你决定 |
+| `PreToolUse` | `ExitPlanMode` / `AskUserQuestion` 走批准；其他工具调用走生命周期事件 | 把 Claude 的权限请求路由到气泡的审批卡，approve / deny / answer 的结果作为 HTTP 响应回给 Claude | **blocking** —— Claude 等你决定 |
 | `PermissionRequest` | 任何显式 `ask` 权限决定 | 在气泡里弹出请求，通过 WebSocket 等待 decide / approve / deny / answer | **blocking** |
 | `Event` | 每个 Claude 生命周期事件（`thinking` / `tool_started` / `tool_finished` / `done` / …） | 把会话状态喂给气泡的状态环和 Live 监视面板的 session 列表 | **non-blocking** —— 发出去就不等 |
 
-Hook 脚本本体在 [`packages/hooks/`](packages/hooks/) —— 都是裸 Node 入口，POST 到本地 daemon 然后把 daemon 的回复按 Claude hook 协议写到 stdout。`setup-user-hooks` 只是写一行 JSON 指向它们，没有任何东西被打包进 Claude Code。
+`setup-user-hooks` 写的 JSON 条目直接 POST 到 `http://127.0.0.1:4317/hook/<endpoint>`，没有本地 hook 脚本 —— Claude Code 用原生 HTTP 通道直接和 daemon 对话。这意味着 daemon 关掉、Clawdeck 卸了之类的情况下，Claude Code 把它当成"非阻断错误"记一条 log 然后正常继续，**不会**像 fail-closed 包装脚本那样把工具调用卡死。每条条目带一个 `"x-clawdeck-version"` 字段，未来版本可以检测+原地升级自己的条目。
 
 **只卸载 Companion 的 hook**（不动你别的 hook）：
 
 ```powershell
 npm run setup-user-hooks -- --uninstall
 ```
+
+打包好的 `Clawdeck.exe` 第一次启动时自己就把 hook 装上，NSIS 卸载器在删 .exe 前会先调 `--uninstall-hooks` —— 手动跑 `setup-user-hooks` 只在 dev 场景下需要。
 
 ---
 
@@ -219,11 +216,14 @@ npm run answer -- <requestId> '{"Question text":"Answer label"}'
 </details>
 
 <details>
-<summary><strong>Hook 入口</strong></summary>
+<summary><strong>直接测 hook 端点</strong></summary>
 
 ```powershell
-npm run hook:permission-request   # blocking —— 守审批
-npm run hook:event                # non-blocking —— 喂状态 / context
+# blocking —— 守审批
+curl -X POST http://127.0.0.1:4317/hook/pre-tool-use -H "content-type: application/json" -d '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"echo hi"}}'
+
+# non-blocking —— 喂状态 / context
+curl -X POST http://127.0.0.1:4317/hook/event -H "content-type: application/json" -d '{"session_id":"t","hook_event_name":"UserPromptSubmit","prompt":"hi"}'
 ```
 </details>
 

@@ -141,39 +141,36 @@ That's it. Open Claude Code in any directory; permission prompts now route throu
 
 ### Kill-switch
 
-The bubble's ⏻ button is equivalent to a sentinel file:
+The bubble's ⏻ button writes a flag file the daemon checks on every hook request:
 
 ```powershell
 type nul > %USERPROFILE%\.claude-companion\disabled    # disable
 del %USERPROFILE%\.claude-companion\disabled           # re-enable
 ```
 
-Per-shell escape hatches (next Claude Code launched in that shell):
-
-```powershell
-$env:CCC_BYPASS_APPROVAL_HOOK = "true"   # use Claude Code's native approval / question UI
-$env:CCC_DISABLE_STATUS_HOOK  = "true"   # stop recording status hook events
-```
+When the flag is present every `/hook/*` endpoint returns a noop and Claude Code falls back to its native prompt — without uninstalling.
 
 ---
 
 ## Hooks Companion installs
 
-Three Claude Code hooks, merged into `~/.claude/settings.json` by `setup-user-hooks` (or per-project after `setup-hooks -- <path>`). Verify install any time with `npm run doctor`.
+Three Claude Code hooks, registered as native `"type":"http"` entries in `~/.claude/settings.json` by `setup-user-hooks` (or per-project after `setup-hooks -- <path>`). Verify install any time with `npm run doctor`.
 
 | Hook | Fires when | What it does | Mode |
 |---|---|---|---|
-| `PreToolUse` | Before every tool call (Bash, Edit, Write, …) | Routes Claude's permission prompt through the bubble's approval card; the approve / deny / answer reply goes back to Claude as the hook's exit decision | **blocking** — Claude waits for your decision |
+| `PreToolUse` | Before `ExitPlanMode` / `AskUserQuestion` (matcher path) and on every tool for the lifecycle event hook | Routes Claude's permission prompt through the bubble's approval card; the approve / deny / answer reply comes back as the hook's HTTP response | **blocking** — Claude waits for your decision |
 | `PermissionRequest` | On any explicit `ask` permission decision | Surfaces the request in the bubble, awaits decide / approve / deny / answer over WebSocket | **blocking** |
 | `Event` | On every Claude lifecycle event (`thinking`, `tool_started`, `tool_finished`, `done`, …) | Feeds session state to the bubble's status orb and the Live monitor session list | **non-blocking** — fire-and-forget |
 
-Hook scripts themselves live in [`packages/hooks/`](packages/hooks/) — plain Node entry points that POST to the local daemon and write the daemon's reply back to stdout in Claude's hook protocol. `setup-user-hooks` only writes a JSON entry pointing to them; nothing is bundled into Claude Code.
+`setup-user-hooks` writes JSON entries that POST directly to `http://127.0.0.1:4317/hook/<endpoint>`. There's no local hook script — Claude Code talks to the daemon natively, which means a daemon-down or Clawdeck-uninstalled scenario is a non-blocking error in Claude Code's native handler (Claude logs and proceeds), instead of a fail-closed lockup. Each entry carries a custom `"x-clawdeck-version"` field so future versions can detect-and-upgrade their own entries.
 
 **Uninstall** without touching your other hooks:
 
 ```powershell
 npm run setup-user-hooks -- --uninstall
 ```
+
+The packaged `Clawdeck.exe` self-installs hooks on first launch and the NSIS uninstaller calls `--uninstall-hooks` before deleting the exe — manual `setup-user-hooks` is dev-mode only.
 
 ---
 
@@ -219,11 +216,14 @@ The Electron bubble does the same internally over WebSocket.
 </details>
 
 <details>
-<summary><strong>Hook entry points</strong></summary>
+<summary><strong>Test hook endpoints directly</strong></summary>
 
 ```powershell
-npm run hook:permission-request   # blocking — gates approvals
-npm run hook:event                # non-blocking — feeds status / context
+# blocking — gates approvals
+curl -X POST http://127.0.0.1:4317/hook/pre-tool-use -H "content-type: application/json" -d '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"echo hi"}}'
+
+# non-blocking — feeds status / context
+curl -X POST http://127.0.0.1:4317/hook/event -H "content-type: application/json" -d '{"session_id":"t","hook_event_name":"UserPromptSubmit","prompt":"hi"}'
 ```
 </details>
 
