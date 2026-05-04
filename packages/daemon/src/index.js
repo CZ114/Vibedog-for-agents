@@ -2001,12 +2001,6 @@ function sampleDeckPayload({ focus, difficulty, date }) {
       "- 难度三档：easy 概念 / medium 实现 / hard 底层\n" +
       "- 空白日 fallback：从 wrong book + 过去 N 天抽题，streak 1 天保护\n" +
       "\n" +
-      "### 触及文件\n" +
-      "\n" +
-      "- `docs/decisions/ADR-20260503-knowledge-cards.md`\n" +
-      "- `docs/stages.md`\n" +
-      "- `CLAUDE.md`\n" +
-      "\n" +
       "> 下一步：实现 daemon 端的 cards-store + endpoints",
     focusSnapshot: focus || "",
     focusCoverage: focus ? 70 : null,
@@ -2069,7 +2063,7 @@ function sampleDeckPayload({ focus, difficulty, date }) {
         source: {
           sessionId: "sess_seed",
           snippet: sourceSnippetClaudeP,
-          fileRef: "docs/decisions/ADR-20260503-knowledge-cards.md#decision-1"
+          fileRef: "packages/daemon/src/cards-generator.js"
         },
         explanation: {
           fromSession: true,

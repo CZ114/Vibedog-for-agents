@@ -10,8 +10,6 @@
  *   - deny     ⇢ --accent-rose  (always reddish)
  *   - --ink-0 over --surface-1 ≥ WCAG AA (4.5:1) for the light theme,
  *     and ≥ 7:1 for the three dark themes.
- *
- * See docs/design-language.md for the original token rationale.
  */
 
 const THEMES = [

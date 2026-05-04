@@ -1,8 +1,6 @@
 // Schema, validators, and pure logic for the Knowledge Cards feature
 // (Stage 1.5). Lives in `shared/` so the daemon, the future generator
 // subprocess wrapper, and any tests can all share one definition.
-//
-// Decisions captured in docs/decisions/ADR-20260503-knowledge-cards.md.
 
 const SCHEMA_VERSION = 1;
 

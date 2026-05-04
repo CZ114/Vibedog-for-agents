@@ -24,17 +24,6 @@ Build an ambient companion and approval layer for Claude Code:
 - Future iPhone app, Live Activity, and Dynamic Island mirror the same protocol after the PC path is boringly reliable.
 - Future relay may allow use outside the same local network.
 
-## Documentation Map
-
-- [Stage Requirements](docs/stages.md): implementation stages from technical MVP to later expansion.
-- [Documentation Framework](docs/documentation-framework.md): how to maintain project docs as the product evolves.
-- [Protocol](docs/protocol.md): Stage 0 HTTP and hook payloads.
-- [Security](docs/security.md): safety defaults, risk classification, and trust boundaries.
-- [Development Setup](docs/dev-setup.md): how to run the daemon, hook, and smoke test.
-- [User Guide](docs/user-guide.md): day-to-day commands for daemon, hooks, and the floating companion.
-- [Desktop Companion](docs/desktop-companion.md): Electron floating window behavior and next steps.
-- [Design Language](docs/design-language.md): tokens, motion, and component recipes for any new UI work.
-
 ## Current Status
 
 **Stage 0** (technical approval spike) and **Stage 1** (Windows floating companion) are shipped: every Claude Code permission gate routes through a local daemon and renders in an Electron bubble; you decide via the bubble's approve / deny / answer / always-allow controls or via two satellite ✓ / ✕ chips that float beside the bubble. Status (`thinking` / `running_tool` / `waiting_approval` / `done` / etc.) renders on the orb, and a global ⏻ kill-switch hands control back to Claude Code's native UI without uninstalling.
@@ -69,7 +58,7 @@ npm run setup-user-hooks
 npm run doctor
 ```
 
-`setup-user-hooks` merges the Companion `hooks` block into `%USERPROFILE%\.claude\settings.json`, preserves unrelated Claude Code settings, writes a timestamped backup before changes, and uses the current repo path automatically. Use `npm run setup-user-hooks -- --dry-run` to preview, or `npm run setup-user-hooks -- --uninstall` to remove only Companion-managed global hooks. [examples/user-settings.example.json](examples/user-settings.example.json) remains the reference shape for hand-diffing.
+`setup-user-hooks` merges the Companion `hooks` block into `%USERPROFILE%\.claude\settings.json`, preserves unrelated Claude Code settings, writes a timestamped backup before changes, and uses the current repo path automatically. Use `npm run setup-user-hooks -- --dry-run` to preview, or `npm run setup-user-hooks -- --uninstall` to remove only Companion-managed global hooks.
 
 Per-project install (legacy, if you want hooks scoped to one repo):
 

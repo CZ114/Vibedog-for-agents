@@ -51,8 +51,7 @@ const CAPSULE_BOUNDS = {
   approval: { width: 360, height: 238 },
   question: { width: 360, height: 300 },
   // cards: knowledge-cards mode (Stage 1.5). Today / History / Wrong-book
-  // tabs, daily abstract, active-review flow. See
-  // docs/decisions/ADR-20260503-knowledge-cards.md.
+  // tabs, daily abstract, active-review flow.
   cards: { width: 460, height: 600 },
   // settings: replaces the old dashboard mode. Knowledge Cards config plus
   // collapsible sections for sessions / activity / devices / pairing.

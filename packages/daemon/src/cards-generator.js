@@ -9,7 +9,6 @@
 // Why subprocess and not the Anthropic API: the user already has Claude
 // Code installed and authenticated; reusing it avoids a separate API key,
 // a separate billing surface, and any auth lifecycle code on our side.
-// (See docs/decisions/ADR-20260503-knowledge-cards.md §"Decision 1".)
 //
 // Envs:
 //   CCC_CARDS_USE_STUB=true            — bypass spawn, return seeded sample

@@ -1,4 +1,5 @@
-/* Companion desktop bubble — see docs/design-language.md for tokens / motion. */
+/* Companion desktop bubble — design tokens, motion curves, and component
+   recipes are defined inline below. */
 
 /* Registered custom properties — let JS-driven ring fill animate smoothly
    instead of jumping when the ctx percentage updates. */
@@ -1480,8 +1481,6 @@ body[data-attention="done"] .status-emoji {
 
 /* ============================================================
    Knowledge Cards (Stage 1.5)
-   See docs/decisions/ADR-20260503-knowledge-cards.md for the full
-   design rationale.
    ============================================================ */
 
 /* Mode visibility — only one of {request, cards, settings, live} renders */

@@ -1,7 +1,6 @@
 // Persistent record of the user's consent to feed Claude Code session
 // transcripts to the local `claude -p` subprocess for card generation.
-// Per docs/decisions/ADR-20260503-knowledge-cards.md §"Decision 11" the
-// first generation must be opt-in; we remember the answer so subsequent
+// First generation must be opt-in; we remember the answer so subsequent
 // generations don't re-prompt.
 //
 // Storage: `<DATA_DIR>/cards-consent.json`. Tiny shape so we keep it

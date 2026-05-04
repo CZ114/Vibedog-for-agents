@@ -574,7 +574,6 @@ function contextUsageFrom(subject) {
 }
 
 function colorForContext(percent) {
-  // Tokens kept in sync with docs/design-language.md.
   if (percent >= 85) {
     return "oklch(70% 0.07 25)"; // dusty rose — alarm
   }
@@ -1624,7 +1623,6 @@ document.addEventListener("focusout", () => {
 
 // ============================================================
 // Knowledge Cards (Stage 1.5) renderer
-// See docs/decisions/ADR-20260503-knowledge-cards.md
 // ============================================================
 
 // Tiny markdown renderer — covers what we actually emit in abstracts:
