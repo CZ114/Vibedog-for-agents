@@ -2,6 +2,7 @@
   "name": "vibedog-for-agents",
   "version": "1.5.0",
   "private": true,
+  "license": "MIT",
   "description": "Vibedog-for-agents — background-watch your Claude Code agent, then review what it taught you the next day.",
   "author": "CZ114",
   "homepage": "https://github.com/CZ114/Vibedog-for-agents",
