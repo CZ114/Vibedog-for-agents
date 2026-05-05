@@ -165,8 +165,8 @@ async function main() {
 
   const managedEntries = findManagedHookEntries(userSettings);
   results.push(managedEntries.length
-    ? result("pass", "Global Companion hooks", `${managedEntries.length} managed hook(s) found`)
-    : result("fail", "Global Companion hooks", "not installed; run npm run setup-user-hooks"));
+    ? result("pass", "Global vibelog hooks", `${managedEntries.length} managed hook(s) found`)
+    : result("fail", "Global vibelog hooks", "not installed; run npm run setup-user-hooks"));
 
   const missingCoverage = checkDesiredHookCoverage(userSettings);
   results.push(missingCoverage.length
@@ -188,9 +188,9 @@ async function main() {
   }
 
   if (fs.existsSync(COMPANION_DISABLED_FLAG)) {
-    results.push(result("warn", "Companion enabled", `disabled flag present: ${COMPANION_DISABLED_FLAG}`));
+    results.push(result("warn", "vibelog enabled", `disabled flag present: ${COMPANION_DISABLED_FLAG}`));
   } else {
-    results.push(result("pass", "Companion enabled", "no disabled flag"));
+    results.push(result("pass", "vibelog enabled", "no disabled flag"));
   }
 
   const health = await healthCheck();
@@ -224,12 +224,12 @@ async function main() {
 
     if (projectManaged.length && managedEntries.length) {
       const detail = projectManaged.map((item) => `${item.settingsPath} (${item.count})`).join("; ");
-      results.push(result("warn", "Double hook risk", `global and project Companion hooks both present: ${detail}`));
+      results.push(result("warn", "Double hook risk", `global and project vibelog hooks both present: ${detail}`));
     } else if (projectManaged.length) {
       const detail = projectManaged.map((item) => `${item.settingsPath} (${item.count})`).join("; ");
-      results.push(result("warn", "Project Companion hooks", `project-only managed hooks present: ${detail}`));
+      results.push(result("warn", "Project vibelog hooks", `project-only managed hooks present: ${detail}`));
     } else {
-      results.push(result("pass", "Project Companion hooks", `none found under ${projectRoot}`));
+      results.push(result("pass", "Project vibelog hooks", `none found under ${projectRoot}`));
     }
   } else {
     results.push(result("warn", "Project root", `not found: ${projectRoot}`));

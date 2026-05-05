@@ -1,13 +1,13 @@
 {
-  "name": "clawdeck",
-  "version": "1.3.2",
+  "name": "vibelog",
+  "version": "1.4.0",
   "private": true,
-  "description": "Clawdeck — a floating Windows desktop companion for Claude Code approvals, sessions, and status. iPhone companion planned.",
+  "description": "vibelog — background-watch your Claude Code agent, then review what it taught you the next day.",
   "author": "CZ114",
-  "homepage": "https://github.com/CZ114/clawdeck",
+  "homepage": "https://github.com/CZ114/vibelog",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CZ114/clawdeck.git"
+    "url": "https://github.com/CZ114/vibelog.git"
   },
   "main": "packages/desktop/main.js",
   "scripts": {
@@ -28,9 +28,9 @@
     "node": ">=20"
   },
   "build": {
-    "appId": "io.clawdeck.app",
-    "productName": "Clawdeck",
-    "copyright": "© 2026 Clawdeck",
+    "appId": "io.vibelog.app",
+    "productName": "vibelog",
+    "copyright": "© 2026 vibelog",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -66,8 +66,8 @@
       "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Clawdeck",
-      "uninstallDisplayName": "Clawdeck",
+      "shortcutName": "vibelog",
+      "uninstallDisplayName": "vibelog",
       "artifactName": "${productName}-${version}.exe",
       "include": "build/installer.nsh"
     }

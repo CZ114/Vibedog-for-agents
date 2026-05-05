@@ -43,11 +43,11 @@ function desiredHookConfig(options = {}) {
   const installStatus = options.installStatus !== false;
   const installApproval = options.installApproval !== false;
   const eventHook = httpHook("event", 10);
-  const answerHook = httpHook("pre-tool-use", 60, "Waiting for Claude Code Companion answer");
+  const answerHook = httpHook("pre-tool-use", 60, "Waiting for vibelog answer");
   const permissionHook = httpHook(
     "permission-request",
     60,
-    "Waiting for Claude Code Companion approval"
+    "Waiting for vibelog approval"
   );
 
   const config = {};

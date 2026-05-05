@@ -532,7 +532,7 @@ async function main() {
     }
 
     const approvalPage = await request("GET", "/");
-    if (!String(approvalPage).includes("Claude Code Companion")) {
+    if (!String(approvalPage).includes("vibelog")) {
       throw new Error("Approval page did not render expected title");
     }
 
@@ -1393,7 +1393,7 @@ async function verifyMarkdownExport(todayDate, archiveId) {
   if (!/scope: all-abstracts/.test(history.body)) {
     throw new Error("history export missing all-abstracts scope marker");
   }
-  if (!/^# Companion abstracts — full history/m.test(history.body)) {
+  if (!/^# vibelog abstracts — full history/m.test(history.body)) {
     throw new Error("history export missing top-level title");
   }
 

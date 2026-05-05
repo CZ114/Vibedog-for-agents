@@ -1091,7 +1091,7 @@ function rebuildTrayMenu() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "Show Clawdeck",
+      label: "Show vibelog",
       click: () => {
         if (!mainWindow) return;
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -1111,7 +1111,7 @@ function rebuildTrayMenu() {
     },
     { type: "separator" },
     {
-      label: "Companion enabled",
+      label: "vibelog enabled",
       type: "checkbox",
       checked: enabled,
       click: (item) => {
@@ -1130,7 +1130,7 @@ function rebuildTrayMenu() {
     },
     { type: "separator" },
     {
-      label: "Quit Clawdeck",
+      label: "Quit vibelog",
       click: () => {
         isQuitting = true;
         app.quit();
@@ -1156,7 +1156,7 @@ function createTray() {
   }
 
   tray = new Tray(image);
-  tray.setToolTip("Clawdeck — Claude Code companion");
+  tray.setToolTip("vibelog — Claude Code agent watch & review");
   rebuildTrayMenu();
 
   tray.on("click", () => {
